@@ -1,0 +1,62 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1750259320,
+        "narHash": "sha256-H8J4H2XCIMEJ5g6fZ179QfQvsc2dUqhqfBjC8RAHNRY=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "9ba04bda9249d5d5e5238303c9755de5a49a79c5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-25.05",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs_2": {
+      "locked": {
+        "lastModified": 1743259260,
+        "narHash": "sha256-ArWLUgRm1tKHiqlhnymyVqi5kLNCK5ghvm06mfCl4QY=",
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "eb0e0f21f15c559d2ac7633dc81d079d1caf5f5f",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos",
+        "ref": "nixpkgs-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "openms": {
+      "inputs": {
+        "nixpkgs": "nixpkgs_2"
+      },
+      "locked": {
+        "lastModified": 1747039201,
+        "narHash": "sha256-YbApus14aS8+9CnjNT8kfBHsUwH0gcKlv+SxWmNPdLE=",
+        "owner": "pjones",
+        "repo": "nix-openms",
+        "rev": "8b4ab94197eb163c9ae3dc3494e347205df14831",
+        "type": "github"
+      },
+      "original": {
+        "owner": "pjones",
+        "repo": "nix-openms",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs",
+        "openms": "openms"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

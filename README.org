@@ -1,0 +1,84 @@
+#+title: Replicating and Comparing the PIP-ECHO Paper
+#+author: Peter J. Jones
+#+date: [2025-06-20 Fri]
+
+* Introduction
+
+** Datasets
+
+*** Descriptions and Links
+
+    - Two-proteome dataset :: ProteomeXchange Consortium [[https://proteomecentral.proteomexchange.org/cgi/GetDataset?ID=PXD014415][PXD014415]]
+
+    - Spike-in dataset :: ProteomeXchange Consortium [[https://proteomecentral.proteomexchange.org/cgi/GetDataset?ID=PXD003881][PXD003881]]
+
+    - Single-cell equivalent dataset :: PRIDE [[https://proteomecentral.proteomexchange.org/cgi/GetDataset?ID=PXD037527][PXD037527]]
+
+    - E. coli dataset :: ProteomeXchange Consortium PXD057758
+
+      This data repository contains log files from all of the tools
+      used for comparison in the paper.
+
+      NOTE: As of [2025-06-20 Fri] this dataset is still marked as
+      private on PRIDE.  There are 86 files that would need to be
+      download manually using a reviewer account.
+
+*** Downloading
+
+    #+header: :tangle scripts/data-download.sh
+    #+header: :shebang "#!/usr/bin/env bash"
+    #+header: :exports code
+    #+begin_src sh
+      data_directory=data
+
+      function download_pride_ftp_url() {
+        local url=$1
+        local id
+        local cache_file
+
+        id=$(basename "$url")
+        cache_file="$data_directory/$id/.ls_cache"
+
+        # Ensure there's a slash on the end of the URL:
+        if [ "${url: -1:1}" != "/" ]; then
+          url="$url/"
+        fi
+
+        mkdir --parents "$data_directory/$id"
+
+        # Download and cache the directory listing:
+        if [ ! -e "$cache_file" ]; then
+          curl --list-only "$url" >"$cache_file"
+        fi
+
+        # Make sure each of the files has been downloaded:
+        while read -r file; do
+          path="$data_directory/$id/$file"
+
+          if [ ! -e "$path" ]; then
+            curl --output "$path" "${url}${file}"
+          fi
+        done <"$cache_file"
+
+        # Report the size of the directory
+        du --human-readable --summarize "$data_directory/$id"
+      }
+
+      main() {
+        if [ $# -gt 0 ]; then
+          data_directory=$1
+        fi
+
+        download_pride_ftp_url "ftp://ftp.pride.ebi.ac.uk/pride/data/archive/2019/09/PXD014415/"
+        download_pride_ftp_url "ftp://ftp.pride.ebi.ac.uk/pride/data/archive/2018/05/PXD003881/"
+        download_pride_ftp_url "ftp://ftp.pride.ebi.ac.uk/pride/data/archive/2023/07/PXD037527/"
+      }
+
+      main "$@"
+    #+end_src
+
+* Local Variables :noexport:
+
+# Local Variables:
+# eval: (add-hook 'after-save-hook #'org-babel-tangle nil t)
+# End:
