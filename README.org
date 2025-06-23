@@ -23,7 +23,11 @@
       private on PRIDE.  There are 86 files that would need to be
       download manually using a reviewer account.
 
-*** Downloading
+      Username: =reviewer_pxd057758@ebi.ac.uk=
+
+      Password: =bIxId0auCLHw=
+
+*** Downloading Public Data
 
     #+header: :tangle scripts/data-download.sh
     #+header: :shebang "#!/usr/bin/env bash"
@@ -56,6 +60,7 @@
           path="$data_directory/$id/$file"
 
           if [ ! -e "$path" ]; then
+            echo "$path"
             curl --output "$path" "${url}${file}"
           fi
         done <"$cache_file"
@@ -64,7 +69,7 @@
         du --human-readable --summarize "$data_directory/$id"
       }
 
-      main() {
+      function main() {
         if [ $# -gt 0 ]; then
           data_directory=$1
         fi
@@ -75,6 +80,78 @@
       }
 
       main "$@"
+    #+end_src
+
+*** Downloading Private PRIDE Data
+
+    Use the reviewer account to download a JSON file containing the
+    list of private files for data set =PXD057758=.
+
+    #+header: :exports code
+    #+begin_src sh
+      function download_private_pride() {
+        local private_dir="data/PXD057758"
+        local private_json="$private_dir/private.json"
+
+        if [ ! -e "$private_json" ]; then
+          curl 'https://www.ebi.ac.uk/pride/private/ws/archive/v2/projects/PXD057758/files?search=&page=0&pageSize=100' \
+            -o "$private_json" \
+            -H 'User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:139.0) Gecko/20100101 Firefox/139.0' \
+            -H 'Accept: application/json, text/plain, */*' \
+            -H 'Accept-Language: en-US,en;q=0.5' \
+            -H 'Accept-Encoding: gzip, deflate, br, zstd' \
+            -H 'Authorization: Bearer eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJyZXZpZXdlcl9weGQwNTc3NThAZWJpLmFjLnVrIiwiYXV0aCI6W3siYXV0aG9yaXR5IjoiUkVWSUVXRVIifV0sInR5cGUiOiJVU0VSX1BBU1NXT1JEIiwiaWF0IjoxNzUwNjc1MzQ1LCJleHAiOjE3NTA3MzUzNDV9.BY_phAr1kthkE3dg_GYAac2i1LaBLI615tDrKnqe6RQJYTSstPaZpMK17096FX00h85uDFSDEbjwM-feEWVLEA' \
+            -H 'X-Requested-With: XMLHttpRequest' \
+            -H 'DNT: 1' \
+            -H 'Sec-GPC: 1' \
+            -H 'Connection: keep-alive' \
+            -H 'Referer: https://www.ebi.ac.uk/pride/archive/projects/PXD057758/private' \
+            -H 'Cookie: embl-ebi-public-website-v1.0-data-protection-accepted=true' \
+            -H 'Sec-Fetch-Dest: empty' \
+            -H 'Sec-Fetch-Mode: cors' \
+            -H 'Sec-Fetch-Site: same-origin'
+        fi
+      }
+
+      download_private_pride
+    #+end_src
+
+    Extract file names and URLs from that JSON file.
+
+    #+header: :exports code
+    #+header: :in-file data/PXD057758/private.json
+    #+header: :results value file :file data/PXD057758/links.json
+    #+begin_src jq
+      ._embedded.files |
+        map({"name": .fileName,
+             "href": ._links.download.href})
+    #+end_src
+
+    #+results:
+    [[file:data/PXD057758/links.json]]
+
+    Download all of the files listed in the JSON file.
+
+    #+header: :tangle scripts/data-download.py
+    #+header: :shebang "#!/usr/bin/env python"
+    #+header: :exports code
+    #+begin_src python
+      import json
+      import os.path
+      import subprocess
+
+      def download_urls(json_file: str, directory: str):
+          with open(json_file) as file:
+            urls = json.load(file)
+
+          for link in urls:
+              path = os.path.join(directory, link["name"])
+              if not os.path.exists(path):
+                  print(path)
+                  subprocess.run(["curl", "-o", path, link["href"]])
+
+      if __name__ == "__main__":
+          download_urls("data/PXD057758/links.json", "data/PXD057758")
     #+end_src
 
 * Local Variables :noexport:

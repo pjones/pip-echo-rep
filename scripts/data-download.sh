@@ -26,6 +26,7 @@ function download_pride_ftp_url() {
     path="$data_directory/$id/$file"
 
     if [ ! -e "$path" ]; then
+      echo "$path"
       curl --output "$path" "${url}${file}"
     fi
   done <"$cache_file"
@@ -34,7 +35,7 @@ function download_pride_ftp_url() {
   du --human-readable --summarize "$data_directory/$id"
 }
 
-main() {
+function main() {
   if [ $# -gt 0 ]; then
     data_directory=$1
   fi
