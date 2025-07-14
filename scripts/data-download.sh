@@ -6,7 +6,12 @@ function download_pride_ftp_url() {
   local id
   local cache_file
 
-  id=$(basename "$url")
+  if [ $# -gt 1 ]; then
+    id=$2
+  else
+    id=$(basename "$url")
+  fi
+
   cache_file="$data_directory/$id/.ls_cache"
 
   # Ensure there's a slash on the end of the URL:
@@ -26,7 +31,7 @@ function download_pride_ftp_url() {
     path="$data_directory/$id/$file"
 
     if [ ! -e "$path" ]; then
-      echo "$path"
+      printf "%s\n%s\n" "$url$file" "$path"
       curl --output "$path" "${url}${file}"
     fi
   done <"$cache_file"
@@ -42,6 +47,7 @@ function main() {
 
   download_pride_ftp_url "ftp://ftp.pride.ebi.ac.uk/pride/data/archive/2019/09/PXD014415/"
   download_pride_ftp_url "ftp://ftp.pride.ebi.ac.uk/pride/data/archive/2018/05/PXD003881/"
+  download_pride_ftp_url "ftp://ftp.pride.ebi.ac.uk/pride/data/archive/2018/05/PXD003881/generated/" "PXD003881/generated"
   download_pride_ftp_url "ftp://ftp.pride.ebi.ac.uk/pride/data/archive/2023/07/PXD037527/"
 }
 

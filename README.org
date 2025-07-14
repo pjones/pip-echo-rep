@@ -40,7 +40,12 @@
         local id
         local cache_file
 
-        id=$(basename "$url")
+        if [ $# -gt 1 ]; then
+          id=$2
+        else
+          id=$(basename "$url")
+        fi
+
         cache_file="$data_directory/$id/.ls_cache"
 
         # Ensure there's a slash on the end of the URL:
@@ -60,7 +65,7 @@
           path="$data_directory/$id/$file"
 
           if [ ! -e "$path" ]; then
-            echo "$path"
+            printf "%s\n%s\n" "$url$file" "$path"
             curl --output "$path" "${url}${file}"
           fi
         done <"$cache_file"
@@ -76,11 +81,18 @@
 
         download_pride_ftp_url "ftp://ftp.pride.ebi.ac.uk/pride/data/archive/2019/09/PXD014415/"
         download_pride_ftp_url "ftp://ftp.pride.ebi.ac.uk/pride/data/archive/2018/05/PXD003881/"
+        download_pride_ftp_url "ftp://ftp.pride.ebi.ac.uk/pride/data/archive/2018/05/PXD003881/generated/" "PXD003881/generated"
         download_pride_ftp_url "ftp://ftp.pride.ebi.ac.uk/pride/data/archive/2023/07/PXD037527/"
       }
 
       main "$@"
     #+end_src
+
+    #+results:
+    | 184K | data/PXD014415           |
+    | 1.4G | data/PXD003881           |
+    | 1.4G | data/PXD003881/generated |
+    | 137G | data/PXD037527           |
 
 *** Downloading Private PRIDE Data
 
