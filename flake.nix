@@ -3,7 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
-    openms.url = "github:pjones/nix-openms";
+    openms.url = "github:pjones/nix-openms/next";
   };
 
   outputs = { self, nixpkgs, ... }:
@@ -32,7 +32,8 @@
         curl
         texliveFull
 
-        # OpenMS
+        self.inputs.openms.packages.${pkgs.system}.flashlfq
+        self.inputs.openms.packages.${pkgs.system}.metamorpheus
         self.inputs.openms.packages.${pkgs.system}.openms
       ];
     in

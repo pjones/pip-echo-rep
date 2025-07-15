@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-data_directory=data
-
 function download_pride_ftp_url() {
   local url=$1
   local id
@@ -35,9 +33,6 @@ function download_pride_ftp_url() {
       curl --output "$path" "${url}${file}"
     fi
   done <"$cache_file"
-
-  # Report the size of the directory
-  du --human-readable --summarize "$data_directory/$id"
 }
 
 function main() {
@@ -49,6 +44,14 @@ function main() {
   download_pride_ftp_url "ftp://ftp.pride.ebi.ac.uk/pride/data/archive/2018/05/PXD003881/"
   download_pride_ftp_url "ftp://ftp.pride.ebi.ac.uk/pride/data/archive/2018/05/PXD003881/generated/" "PXD003881/generated"
   download_pride_ftp_url "ftp://ftp.pride.ebi.ac.uk/pride/data/archive/2023/07/PXD037527/"
+
+  # Report the size of the directories:
+  du \
+    --human-readable \
+    --summarize \
+    --dereference \
+    --total \
+    "$data_directory"/*
 }
 
 main "$@"

@@ -4,6 +4,36 @@
 
 * Introduction
 
+** Common Variables and Functions
+
+   #+header: :shebang "#!/usr/bin/env bash"
+   #+header: :tangle scripts/common.sh
+   #+header: :exports code :results none
+   #+header: :session *common:sh*
+   #+begin_src sh
+     data_directory=$(realpath "data")
+     results_directory=$(realpath "results")
+
+     function cd_results_dir() {
+       local name=$1
+       shift
+
+       dir="$results_directory/$name"
+
+       if [ -d "$dir" ]; then
+         return 1
+       else
+         mkdir -p "$dir"
+         pushd "$dir" || exit 1
+       fi
+     }
+
+     function timed_run() {
+       time "$@" |
+         tee "$(date +%Y%m%d-%s).log"
+     }
+   #+end_src
+
 ** Datasets
 
 *** Descriptions and Links
@@ -27,82 +57,22 @@
 
       Password: =bIxId0auCLHw=
 
-*** Downloading Public Data
-
-    #+header: :tangle scripts/data-download.sh
-    #+header: :shebang "#!/usr/bin/env bash"
-    #+header: :exports code
-    #+begin_src sh
-      data_directory=data
-
-      function download_pride_ftp_url() {
-        local url=$1
-        local id
-        local cache_file
-
-        if [ $# -gt 1 ]; then
-          id=$2
-        else
-          id=$(basename "$url")
-        fi
-
-        cache_file="$data_directory/$id/.ls_cache"
-
-        # Ensure there's a slash on the end of the URL:
-        if [ "${url: -1:1}" != "/" ]; then
-          url="$url/"
-        fi
-
-        mkdir --parents "$data_directory/$id"
-
-        # Download and cache the directory listing:
-        if [ ! -e "$cache_file" ]; then
-          curl --list-only "$url" >"$cache_file"
-        fi
-
-        # Make sure each of the files has been downloaded:
-        while read -r file; do
-          path="$data_directory/$id/$file"
-
-          if [ ! -e "$path" ]; then
-            printf "%s\n%s\n" "$url$file" "$path"
-            curl --output "$path" "${url}${file}"
-          fi
-        done <"$cache_file"
-
-        # Report the size of the directory
-        du --human-readable --summarize "$data_directory/$id"
-      }
-
-      function main() {
-        if [ $# -gt 0 ]; then
-          data_directory=$1
-        fi
-
-        download_pride_ftp_url "ftp://ftp.pride.ebi.ac.uk/pride/data/archive/2019/09/PXD014415/"
-        download_pride_ftp_url "ftp://ftp.pride.ebi.ac.uk/pride/data/archive/2018/05/PXD003881/"
-        download_pride_ftp_url "ftp://ftp.pride.ebi.ac.uk/pride/data/archive/2018/05/PXD003881/generated/" "PXD003881/generated"
-        download_pride_ftp_url "ftp://ftp.pride.ebi.ac.uk/pride/data/archive/2023/07/PXD037527/"
-      }
-
-      main "$@"
-    #+end_src
-
-    #+results:
-    | 184K | data/PXD014415           |
-    | 1.4G | data/PXD003881           |
-    | 1.4G | data/PXD003881/generated |
-    | 137G | data/PXD037527           |
-
 *** Downloading Private PRIDE Data
 
     Use the reviewer account to download a JSON file containing the
-    list of private files for data set =PXD057758=.
+    list of private files for data set =PXD057758=.  The JSON file can
+    be found in the debugger console of the web browser.
+
+    From the networking section of the debugger, Firefox allows you to
+    generate a =curl= command that will download the JSON file.  That
+    command is below.  Note that this session has expired and this
+    command probably no longer works.
 
     #+header: :exports code
+    #+header: :session *common:sh*
     #+begin_src sh
       function download_private_pride() {
-        local private_dir="data/PXD057758"
+        local private_dir="$data_directory/PXD057758"
         local private_json="$private_dir/private.json"
 
         if [ ! -e "$private_json" ]; then
@@ -165,6 +135,84 @@
       if __name__ == "__main__":
           download_urls("data/PXD057758/links.json", "data/PXD057758")
     #+end_src
+
+*** Downloading Public Data
+
+    #+header: :tangle scripts/data-download.sh
+    #+header: :shebang "#!/usr/bin/env bash"
+    #+header: :session *common:sh*
+    #+header: :exports code
+    #+begin_src sh
+      function download_pride_ftp_url() {
+        local url=$1
+        local id
+        local cache_file
+
+        if [ $# -gt 1 ]; then
+          id=$2
+        else
+          id=$(basename "$url")
+        fi
+
+        cache_file="$data_directory/$id/.ls_cache"
+
+        # Ensure there's a slash on the end of the URL:
+        if [ "${url: -1:1}" != "/" ]; then
+          url="$url/"
+        fi
+
+        mkdir --parents "$data_directory/$id"
+
+        # Download and cache the directory listing:
+        if [ ! -e "$cache_file" ]; then
+          curl --list-only "$url" >"$cache_file"
+        fi
+
+        # Make sure each of the files has been downloaded:
+        while read -r file; do
+          path="$data_directory/$id/$file"
+
+          if [ ! -e "$path" ]; then
+            printf "%s\n%s\n" "$url$file" "$path"
+            curl --output "$path" "${url}${file}"
+          fi
+        done <"$cache_file"
+      }
+
+      function main() {
+        if [ $# -gt 0 ]; then
+          data_directory=$1
+        fi
+
+        download_pride_ftp_url "ftp://ftp.pride.ebi.ac.uk/pride/data/archive/2019/09/PXD014415/"
+        download_pride_ftp_url "ftp://ftp.pride.ebi.ac.uk/pride/data/archive/2018/05/PXD003881/"
+        download_pride_ftp_url "ftp://ftp.pride.ebi.ac.uk/pride/data/archive/2018/05/PXD003881/generated/" "PXD003881/generated"
+        download_pride_ftp_url "ftp://ftp.pride.ebi.ac.uk/pride/data/archive/2023/07/PXD037527/"
+
+        # Report the size of the directories:
+        du \
+          --human-readable \
+          --summarize \
+          --dereference \
+          --total \
+          "$data_directory"/*
+      }
+
+      main "$@"
+    #+end_src
+
+    #+results:
+    | 33G  | data/PXD003881 |
+    | 17G  | data/PXD014415 |
+    | 244G | data/PXD037527 |
+    | 63G  | data/PXD057758 |
+    | 355G | total          |
+
+* Quantification Comparison
+
+** Single-cell Data (PXD003881)
+
+*** FlashLFQ with PIP-ECHO
 
 * Local Variables :noexport:
 

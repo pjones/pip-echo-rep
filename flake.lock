@@ -37,15 +37,16 @@
         "nixpkgs": "nixpkgs_2"
       },
       "locked": {
-        "lastModified": 1747039201,
-        "narHash": "sha256-YbApus14aS8+9CnjNT8kfBHsUwH0gcKlv+SxWmNPdLE=",
+        "lastModified": 1752581707,
+        "narHash": "sha256-4jJp8xu/Yr60OJmVQYyxsS8caPv/q44bvGh3W6o6mkI=",
         "owner": "pjones",
         "repo": "nix-openms",
-        "rev": "8b4ab94197eb163c9ae3dc3494e347205df14831",
+        "rev": "75a91056c899f19d00a1aeb7bff4e23e75e7ec6b",
         "type": "github"
       },
       "original": {
         "owner": "pjones",
+        "ref": "next",
         "repo": "nix-openms",
         "type": "github"
       }
