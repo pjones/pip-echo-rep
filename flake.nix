@@ -35,6 +35,7 @@
         self.inputs.openms.packages.${pkgs.system}.flashlfq
         self.inputs.openms.packages.${pkgs.system}.metamorpheus
         self.inputs.openms.packages.${pkgs.system}.openms
+        self.inputs.openms.packages.${pkgs.system}.thermorawfp
       ];
     in
     {

@@ -4,34 +4,14 @@
 
 * Introduction
 
-** Common Variables and Functions
+** Common Variables and Functions :noexport:
 
    #+header: :shebang "#!/usr/bin/env bash"
-   #+header: :tangle scripts/common.sh
    #+header: :exports code :results none
    #+header: :session *common:sh*
    #+begin_src sh
      data_directory=$(realpath "data")
      results_directory=$(realpath "results")
-
-     function cd_results_dir() {
-       local name=$1
-       shift
-
-       dir="$results_directory/$name"
-
-       if [ -d "$dir" ]; then
-         return 1
-       else
-         mkdir -p "$dir"
-         pushd "$dir" || exit 1
-       fi
-     }
-
-     function timed_run() {
-       time "$@" |
-         tee "$(date +%Y%m%d-%s).log"
-     }
    #+end_src
 
 ** Datasets
@@ -210,9 +190,31 @@
 
 * Quantification Comparison
 
-** Single-cell Data (PXD003881)
+** Single-cell Data (PXD037527)
 
 *** FlashLFQ with PIP-ECHO
+
+    #+header: :exports code :results none
+    #+header: :shebang "#!/usr/bin/env bash"
+    #+header: :tangle scripts/run-flashlfq-PXD037527.sh
+    #+begin_src sh
+      data_directory=$(realpath "data")
+      results_directory=$(realpath "results")
+
+      scripts/flashlfq.sh \
+        -r "$results_directory/PXD037527/flashlfq" \
+        -f "$data_directory/PXD037527/uniprot_reviewed_combined_UP5640_UP2311_2022_08_11.fasta" \
+        "$data_directory/PXD037527/Ex_AuLC1_30m_2D19_3_20um30cm_SPE50_15118120_OTOT_11860_1x02nguL_1.raw" \
+        "$data_directory/PXD037527/Ex_AuLC1_30m_2D19_3_20um30cm_SPE50_15118120_OTOT_11860_1x02nguL_2.raw" \
+        "$data_directory/PXD037527/Ex_AuLC1_30m_2D19_3_20um30cm_SPE50_15118120_OTOT_11860_1x02nguL_3.raw" \
+        "$data_directory/PXD037527/Ex_AuLC1_30m_2D19_3_20um30cm_SPE50_15118120_OTOT_11860_1x02nguL_4.raw" \
+        "$data_directory/PXD037527/Ex_AuLC1_30m_2D19_3_20um30cm_SPE50_15118120_OTOT_11860_1x02nguL_5.raw" \
+        "$data_directory/PXD037527/Ex_AuLC1_30m_2D19_3_20um30cm_SPE50_15118120_OTOT_11860_1x02nguL_6.raw" \
+        "$data_directory/PXD037527/Ex_AuLC1_30m_2D19_3_20um30cm_SPE50_15118120_OTOT_11860_1x02nguL_7.raw" \
+        "$data_directory/PXD037527/Ex_AuLC1_30m_2D19_3_20um30cm_SPE50_15118120_OTOT_11860_1x02nguL_8.raw" \
+        "$data_directory/PXD037527/Ex_AuLC1_30m_2D19_3_20um30cm_SPE50_15118120_OTOT_2215_HeYe_1.raw" \
+        "$data_directory/PXD037527/Ex_AuLC1_30m_2D19_3_20um30cm_SPE50_15118120_OTOT_2215_HeYe_2.raw"
+    #+end_src
 
 * Local Variables :noexport:
 
