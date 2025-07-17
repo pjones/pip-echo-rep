@@ -70,7 +70,9 @@ function convert_spectra_files() {
 ################################################################################
 function bootstrap_metamorpheus() {
   local settings_dir=$1
-  local task_file=$2
+  local templates_dir=$2
+  local calibration_task_file=$3
+  local search_task_file=$4
 
   if [ ! -d "$settings_dir" ]; then
     log "generating MetaMorpheus settings directory"
@@ -90,17 +92,23 @@ UserHasAgreedToThermoRawFileReaderLicence = true
 EOF
   fi
 
-  if [ ! -e "$task_file" ]; then
-    log "generating default configuration for MetaMorpheus"
-    mkdir --parents mmtmp
+  if [ ! -d "$templates_dir" ]; then
+    log "generating default configuration templates for MetaMorpheus"
+    mkdir --parents "$templates_dir"
 
-    pushd mmtmp || exit 1
+    pushd "$templates_dir" || exit 1
     MetaMorpheus --mmsettings "$settings_dir" -g -o .
     popd || exit 1
+  fi
 
+  if [ -n "${calibration_task_file:-}" ] && [ ! -e "$calibration_task_file" ]; then
+    cp "$templates_dir/CalibrationTask.toml" "$calibration_task_file"
+  fi
+
+  if [ -n "${search_task_file:-}" ] && [ ! -e "$search_task_file" ]; then
     # Modify some of the default settings to match the paper:
     #
-    # NOTE: These are the settings that are different than the default
+    # NOTE: These are the settings that are /different/ than the default
     # settings.
     sed -E \
       -e '/^DoLabelFreeQuantification/s/=.*$/= false/' \
@@ -108,10 +116,8 @@ EOF
       -e '/^WriteIndividualFiles/s/=.*$/= false/' \
       -e '/^QValueThreshold /s/=.*$/= 1.0/' \
       -e '/^PepQValueThreshold /s/=.*$/= 0.01/' \
-      "mmtmp/$task_file" >"$task_file"
-
-    rm --recursive --force mmtmp
-
+      -e '/^MinAllowedInternalFragmentLength /s/=.*/= 7/' \
+      "$templates_dir/SearchTask.toml" >"$search_task_file"
   fi
 }
 
@@ -127,15 +133,25 @@ function metamorpheus() {
   shift
 
   local spectra_files=()
-  local task_file=SearchTask.toml
+  local search_task_file=Task1-SearchTask.toml
+  local calibration_task_file=Task2-CalibrationTask.toml
 
   local settings_dir
   settings_dir=$(realpath mmsettings)
 
+  local templates_dir
+  templates_dir=$(realpath mmtemplates)
+
   # Generate settings and configuration:
   bootstrap_metamorpheus \
     "$settings_dir" \
-    "$task_file"
+    "$templates_dir" \
+    "$calibration_task_file" \
+    "$search_task_file"
+
+  # Reuse the search task:
+  local task_3_search="${search_task_file//Task1/Task3}"
+  cp "$search_task_file" "$task_3_search"
 
   # Convert RAW files:
   convert_spectra_files "$@"
@@ -145,7 +161,7 @@ function metamorpheus() {
     log "running MetaMorpheus"
     time MetaMorpheus \
       --mmsettings "$settings_dir" \
-      -t "$task_file" \
+      -t "$search_task_file" "$calibration_task_file" "$task_3_search" \
       -d "$fasta_file" \
       -s "${spectra_files[@]}" \
       -o . |
@@ -156,6 +172,7 @@ function metamorpheus() {
 ################################################################################
 function flashlfq() {
   local psms_file=$1
+  local mzml_dir=$2
 
   # FlashLFQ and MetaMorpheus don't agree on the column names anymore :(
   local fixed_psms_file
@@ -175,13 +192,10 @@ function flashlfq() {
   fi
 
   if [ ! -e QuantifiedPeptides.tsv ]; then
-    # FIXME: what command line argument sets this?
-    # DonorQValueThreshold = 0.002
-
     log "running FlashLFQ"
     time FlashLFQ \
       --rea --ath \
-      --out . --idt "$fixed_psms_file" --rep . \
+      --out . --idt "$fixed_psms_file" --rep "$mzml_dir" \
       --ppm 10.0 --iso 5.0 --nis 2 \
       --mbr --mrt 1.5 --pipfdr 0.01 |
       tee "flashlfq.log"
@@ -233,7 +247,7 @@ function main() {
   pushd "$option_results_dir" || exit 1
 
   metamorpheus "$option_fasta_file" "$@"
-  flashlfq Task1SearchTask/AllPSMs.psmtsv
+  flashlfq Task3SearchTask/AllPSMs.psmtsv Task2CalibrationTask
 }
 
 ################################################################################
