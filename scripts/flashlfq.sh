@@ -9,9 +9,9 @@ option_results_dir=
 option_fasta_file=
 
 ################################################################################
-usage() {
+function usage() {
   cat <<EOF
-Usage: $(basename "$0") [options]
+Usage: $(basename "$0") [options] mzML [mzML...]
 
   -f FILE FASTA file
   -h      This message
@@ -23,48 +23,6 @@ EOF
 ################################################################################
 function log() {
   echo "==> " "$@"
-}
-
-################################################################################
-# Convert spectra files to the appropriate format.
-#
-# Resulting file names are stored in the global variable
-# `spectra_files`.
-function convert_spectra_files() {
-  spectra_files=()
-
-  for file in "$@"; do
-    case "${file##*.}" in
-    raw)
-      # Convert raw to mzML
-      output=$(basename "$file" .raw).mzML
-
-      if [ ! -e "$output" ]; then
-        ThermoRawFileParser \
-          --input="$file" \
-          --output="$output" \
-          --format=2 \
-          --msLevel=1-
-      fi
-
-      spectra_files+=("$output")
-      ;;
-
-    *)
-      # Just link the file here:
-      output=$(basename "$file")
-      spectra_files+=("$output")
-
-      ln \
-        --symbolic \
-        --relative \
-        --force \
-        --no-dereference \
-        --logical \
-        "$file" "$output"
-      ;;
-    esac
-  done
 }
 
 ################################################################################
@@ -152,9 +110,6 @@ function metamorpheus() {
   # Reuse the search task:
   local task_3_search="${search_task_file//Task1/Task3}"
   cp "$search_task_file" "$task_3_search"
-
-  # Convert RAW files:
-  convert_spectra_files "$@"
 
   # Do the identification:
   if [ ! -e Task1SearchTask/results.txt ]; then

@@ -3,7 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
-    openms.url = "github:pjones/nix-openms/next";
+    proteomics.url = "github:pjones/proteomics.nix/openms-3.5";
   };
 
   outputs = { self, nixpkgs, ... }:
@@ -30,12 +30,16 @@
         ]))
 
         curl
+        jre
         texliveFull
 
-        self.inputs.openms.packages.${pkgs.system}.flashlfq
-        self.inputs.openms.packages.${pkgs.system}.metamorpheus
-        self.inputs.openms.packages.${pkgs.system}.openms
-        self.inputs.openms.packages.${pkgs.system}.thermorawfp
+        self.inputs.proteomics.packages.${pkgs.system}.comet
+        self.inputs.proteomics.packages.${pkgs.system}.flashlfq
+        self.inputs.proteomics.packages.${pkgs.system}.metamorpheus
+        self.inputs.proteomics.packages.${pkgs.system}.msgfplus
+        self.inputs.proteomics.packages.${pkgs.system}.openms
+        self.inputs.proteomics.packages.${pkgs.system}.percolator
+        self.inputs.proteomics.packages.${pkgs.system}.thermorawfp
       ];
     in
     {
