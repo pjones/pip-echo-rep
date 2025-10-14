@@ -10,6 +10,9 @@ option_fasta_file=
 option_generate_decoys=1
 option_decoy_prefix="DECOY_"
 option_design_file=
+option_proteomicslfq=ProteomicsLFQ
+option_use_gdb=0
+option_gdb_flags=()
 
 ################################################################################
 declare -a id_xml_files
@@ -22,7 +25,10 @@ Usage: $(basename "$0") [options] mzML [mzML...]
   -d FILE Design file
   -D      Turn off decoy generation
   -f FILE FASTA file
+  -g      Enable debugging via GDB
+  -G OPT  Pass OPT to GDB
   -h      This message
+  -p BIN  The ProteomicsLFQ binary to use
   -r DIR  Where to store results
 
 EOF
@@ -284,13 +290,21 @@ function identify_peptides() {
 function quantify_peptides() {
   local mz_tab_file="proteomicslfq.mzTab"
   local proteomicslfq_flags=()
+  local command=$option_proteomicslfq
+  local options=()
 
   if [ -n "$option_design_file" ]; then
     proteomicslfq_flags+=("-design" "$option_design_file")
   fi
 
-  if [ ! -e "$mz_tab_file" ]; then
-    ProteomicsLFQ \
+  if [ "$option_use_gdb" -eq 1 ]; then
+    command=gdb
+    options=("${option_gdb_flags[@]}")
+    options+=("--args" "$option_proteomicslfq")
+  fi
+
+  if [ "$option_use_gdb" -eq 1 ] || [ ! -e "$mz_tab_file" ]; then
+    "$command" "${options[@]}" \
       -threads 2 \
       -in "$@" \
       -ids "${id_xml_files[@]}" \
@@ -318,7 +332,7 @@ function quantify_peptides() {
 
 ################################################################################
 function main() {
-  while getopts "d:Df:hr:" o; do
+  while getopts "d:Df:gG:hp:r:" o; do
     case "${o}" in
     d)
       option_design_file=$OPTARG
@@ -337,9 +351,21 @@ function main() {
       option_fasta_file=$OPTARG
       ;;
 
+    g)
+      option_use_gdb=1
+      ;;
+
+    G)
+      option_gdb_flags+=("$OPTARG")
+      ;;
+
     h)
       usage
       exit
+      ;;
+
+    p)
+      option_proteomicslfq=$OPTARG
       ;;
 
     r)
