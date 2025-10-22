@@ -40,15 +40,23 @@
         self.inputs.proteomics.packages.${pkgs.system}.openms
         self.inputs.proteomics.packages.${pkgs.system}.percolator
         self.inputs.proteomics.packages.${pkgs.system}.thermorawfp
+
       ];
     in
     {
       devShells = forAllSystems (system:
-        let pkgs = nixpkgsFor.${system}; in
+        let
+          pkgs = nixpkgsFor.${system};
+          lib = pkgs.lib;
+          gccVer = lib.concatStringsSep "." (lib.take 3 (lib.splitVersion pkgs.libgcc.version));
+        in
         {
           default = pkgs.mkShell {
             NIX_PATH = "nixpkgs=${pkgs.path}";
             buildInputs = buildInputs pkgs;
+
+            # Help GDB find the STL pretty printer:
+            PYTHON_LIBSTDCXX = "${pkgs.libgcc.lib}/share/gcc-${gccVer}/python";
           };
         });
     };

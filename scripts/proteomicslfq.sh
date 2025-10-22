@@ -11,6 +11,7 @@ option_generate_decoys=1
 option_decoy_prefix="DECOY_"
 option_design_file=
 option_proteomicslfq=ProteomicsLFQ
+option_use_pip_echo=0
 option_use_gdb=0
 option_gdb_flags=()
 
@@ -24,6 +25,7 @@ Usage: $(basename "$0") [options] mzML [mzML...]
 
   -d FILE Design file
   -D      Turn off decoy generation
+  -e      Use PIP-ECHO
   -f FILE FASTA file
   -g      Enable debugging via GDB
   -G OPT  Pass OPT to GDB
@@ -66,7 +68,7 @@ function id_with_msgf() {
     buildsa_flags+=("-decoy" "$option_decoy_prefix")
     buildsa_flags+=("-tda" "1")
     msgf_index="$index_dir/$(basename "$option_fasta_file" .fasta).revCat.cseq"
-    option_fasta_file="$index_dir/$(basename "$option_fasta_file" .fasta).revCat.fasta"
+    option_fasta_file=$(realpath "$index_dir/$(basename "$option_fasta_file" .fasta).revCat.fasta")
   else
     buildsa_flags+=("-tda" "0")
   fi
@@ -245,7 +247,7 @@ function filter_consensus_id_files() {
   for consensus_file in "$@"; do
     fdr_file=$(dirname "$consensus_file")/$(basename "$consensus_file" .idXML)_fdr.idXML
     id_filter_file=$(dirname "$consensus_file")/$(basename "$consensus_file" .idXML)_filter.idXML
-    filter_consensus_id_files_res+=("$id_filter_file")
+    filter_consensus_id_files_res+=("$(realpath "$id_filter_file")")
 
     if [ ! -e "$fdr_file" ]; then
       FalseDiscoveryRate \
@@ -297,6 +299,10 @@ function quantify_peptides() {
     proteomicslfq_flags+=("-design" "$option_design_file")
   fi
 
+  if [ "$option_use_pip_echo" -eq 1 ]; then
+    proteomicslfq_flags+=("-pip_echo" "true")
+  fi
+
   if [ "$option_use_gdb" -eq 1 ]; then
     command=gdb
     options=("${option_gdb_flags[@]}")
@@ -332,7 +338,7 @@ function quantify_peptides() {
 
 ################################################################################
 function main() {
-  while getopts "d:Df:gG:hp:r:" o; do
+  while getopts "d:Def:gG:hp:r:" o; do
     case "${o}" in
     d)
       option_design_file=$OPTARG
@@ -345,6 +351,10 @@ function main() {
 
     D)
       option_generate_decoys=0
+      ;;
+
+    e)
+      option_use_pip_echo=1
       ;;
 
     f)
