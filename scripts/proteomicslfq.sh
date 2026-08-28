@@ -6,14 +6,16 @@ set -o pipefail
 
 ################################################################################
 option_results_dir=
-option_fasta_file=
-option_generate_decoys=1
+option_fasta_files=()
 option_decoy_prefix="DECOY_"
 option_design_file=
 option_proteomicslfq=ProteomicsLFQ
 option_use_pip_echo=0
 option_use_gdb=0
 option_gdb_flags=()
+
+################################################################################
+final_fasta_file=
 
 ################################################################################
 declare -a id_xml_files
@@ -26,7 +28,7 @@ Usage: $(basename "$0") [options] mzML [mzML...]
   -d FILE Design file
   -D      Turn off decoy generation
   -e      Use PIP-ECHO
-  -f FILE FASTA file
+  -f FILE Add a FASTA file
   -g      Enable debugging via GDB
   -G OPT  Pass OPT to GDB
   -h      This message
@@ -58,32 +60,37 @@ function id_with_msgf() {
   local index_dir="msgf_index"
   mkdir -p "$index_dir"
 
+  local fasta_dir="msgf_fasta_inputs"
+  mkdir -p "$fasta_dir"
+
+  for file in "${option_fasta_files[@]}"; do
+    ln "$file" "$fasta_dir"
+  done
+
   local msgf_index
-  msgf_index="$index_dir/$(basename "$option_fasta_file" .fasta).cseq"
-
-  local fasta_file=$option_fasta_file
-  local buildsa_flags=()
-
-  if [ "$option_generate_decoys" -eq 1 ]; then
-    buildsa_flags+=("-decoy" "$option_decoy_prefix")
-    buildsa_flags+=("-tda" "1")
-    msgf_index="$index_dir/$(basename "$option_fasta_file" .fasta).revCat.cseq"
-    option_fasta_file=$(realpath "$index_dir/$(basename "$option_fasta_file" .fasta).revCat.fasta")
-  else
-    buildsa_flags+=("-tda" "0")
-  fi
+  msgf_index="$index_dir/$(basename "$fasta_dir").revCat.cseq"
+  final_fasta_file=$(realpath "$index_dir/$(basename "$fasta_dir").revCat.fasta")
 
   if [ ! -e "$msgf_index" ]; then
     # https://msgfplus.github.io/msgfplus/BuildSA.html
+    local buildsa_flags=()
+    buildsa_flags+=("-decoy" "$option_decoy_prefix")
+    buildsa_flags+=("-tda" "1")
+
     java \
       -Xms6144m \
       -Xmx6144m \
       -cp "$jar" \
       edu.ucsd.msjava.msdbsearch.BuildSA \
-      -d "$fasta_file" \
+      -d "$fasta_dir" \
       -o "$index_dir" \
       -debug 0 \
       "${buildsa_flags[@]}"
+
+    if [ ! -e "$final_fasta_file" ]; then
+      echo >&2 "ERROR: msgf did not create the final FASTA file: $final_fasta_file"
+      exit 1
+    fi
   fi
 
   local msgf_id_dir="msgf_ids"
@@ -103,7 +110,7 @@ function id_with_msgf() {
         -executable "$jar" \
         -threads 2 \
         -java_memory 6144 \
-        -database "$option_fasta_file" \
+        -database "$final_fasta_file" \
         -instrument low_res \
         -matches_per_spec 1 \
         -min_precursor_charge 2 \
@@ -144,7 +151,7 @@ function id_with_comet() {
         -in "$mzml_file" \
         -out "$id_file" \
         -threads 2 \
-        -database "$option_fasta_file" \
+        -database "$final_fasta_file" \
         -instrument low_res \
         -missed_cleavages 2 \
         -min_peptide_length 6 \
@@ -314,7 +321,7 @@ function quantify_peptides() {
       -threads 2 \
       -in "$@" \
       -ids "${id_xml_files[@]}" \
-      -fasta "$option_fasta_file" \
+      -fasta "$final_fasta_file" \
       -protein_inference aggregation \
       -quantification_method feature_intensity \
       -targeted_only false \
@@ -338,7 +345,7 @@ function quantify_peptides() {
 
 ################################################################################
 function main() {
-  while getopts "d:Def:gG:hp:r:" o; do
+  while getopts "d:ef:gG:hp:r:" o; do
     case "${o}" in
     d)
       option_design_file=$OPTARG
@@ -349,16 +356,12 @@ function main() {
       fi
       ;;
 
-    D)
-      option_generate_decoys=0
-      ;;
-
     e)
       option_use_pip_echo=1
       ;;
 
     f)
-      option_fasta_file=$OPTARG
+      option_fasta_files+=("$OPTARG")
       ;;
 
     g)
@@ -390,9 +393,8 @@ function main() {
 
   shift $((OPTIND - 1))
 
-  if [ -z "${option_fasta_file:-}" ] ||
-    [ ! -e "$option_fasta_file" ]; then
-    echo >&2 "ERROR: FASTA file not given or does not exist: ${option_fasta_file:-}"
+  if [ "${#option_fasta_files[@]}" -eq 0 ]; then
+    echo >&2 "ERROR: no FASTA files given"
     exit 1
   fi
 

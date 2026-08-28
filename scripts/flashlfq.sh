@@ -6,14 +6,14 @@ set -o pipefail
 
 ################################################################################
 option_results_dir=
-option_fasta_file=
+option_fasta_files=()
 
 ################################################################################
 function usage() {
   cat <<EOF
 Usage: $(basename "$0") [options] mzML [mzML...]
 
-  -f FILE FASTA file
+  -f FILE Add a FASTA file
   -h      This message
   -r DIR  Where to store results
 
@@ -84,13 +84,9 @@ EOF
 #
 # Arguments:
 #
-# $1: FASTA file
 # $@: Spectra files
 function metamorpheus() {
-  local fasta_file=$1
-  shift
-
-  local spectra_files=()
+  local spectra_files=("$@")
   local search_task_file=Task1-SearchTask.toml
   local calibration_task_file=Task2-CalibrationTask.toml
 
@@ -117,7 +113,7 @@ function metamorpheus() {
     time MetaMorpheus \
       --mmsettings "$settings_dir" \
       -t "$search_task_file" "$calibration_task_file" "$task_3_search" \
-      -d "$fasta_file" \
+      -d "${option_fasta_files[@]}" \
       -s "${spectra_files[@]}" \
       -o . |
       tee "metamorpheus.log"
@@ -162,7 +158,7 @@ function main() {
   while getopts "f:hr:" o; do
     case "${o}" in
     f)
-      option_fasta_file=$OPTARG
+      option_fasta_files+=("$OPTARG")
       ;;
 
     h)
@@ -182,9 +178,8 @@ function main() {
 
   shift $((OPTIND - 1))
 
-  if [ -z "${option_fasta_file:-}" ] ||
-    [ ! -e "$option_fasta_file" ]; then
-    echo >&2 "ERROR: FASTA file not given or does not exist: ${option_fasta_file:-}"
+  if [ "${#option_fasta_files[@]}" -eq 0 ]; then
+    echo >&2 "ERROR: no FASTA files given"
     exit 1
   fi
 
@@ -201,7 +196,7 @@ function main() {
   mkdir --parents "$option_results_dir"
   pushd "$option_results_dir" || exit 1
 
-  metamorpheus "$option_fasta_file" "$@"
+  metamorpheus "$@"
   flashlfq Task3SearchTask/AllPSMs.psmtsv Task2CalibrationTask
 }
 
