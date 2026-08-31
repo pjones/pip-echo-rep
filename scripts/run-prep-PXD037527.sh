@@ -15,7 +15,15 @@ scripts/prepare.sh \
   "$data_directory/PXD037527/Ex_AuLC1_30m_2D19_3_20um30cm_SPE50_15118120_OTOT_2215_HeYe_1.raw" \
   "$data_directory/PXD037527/Ex_AuLC1_30m_2D19_3_20um30cm_SPE50_15118120_OTOT_2215_HeYe_2.raw"
 
-cp \
-  "$data_directory/PXD057758/ConcatenatedHumanEntrapmentProteins_50percent.fasta" \
-  "$data_directory/PXD057758/uniprot_SCerevisiae_6k_03_2024.fasta" \
-  "$results_directory/PXD037527/input-files/"
+fast_files=(
+  "$data_directory/PXD057758/ConcatenatedHumanEntrapmentProteins_50percent.fasta"
+  "$data_directory/PXD057758/uniprot_SCerevisiae_6k_03_2024.fasta"
+)
+
+for fasta in "${fast_files[@]}"; do
+  base=$(basename "$fasta")
+
+  if [[ ! -e "$results_directory/PXD037527/input-files/$base" ]]; then
+    cp "$fasta" "$results_directory/PXD037527/input-files"
+  fi
+done

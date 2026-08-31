@@ -223,10 +223,18 @@
          "$data_directory/PXD037527/Ex_AuLC1_30m_2D19_3_20um30cm_SPE50_15118120_OTOT_2215_HeYe_1.raw" \
          "$data_directory/PXD037527/Ex_AuLC1_30m_2D19_3_20um30cm_SPE50_15118120_OTOT_2215_HeYe_2.raw"
 
-       cp \
-         "$data_directory/PXD057758/ConcatenatedHumanEntrapmentProteins_50percent.fasta" \
-         "$data_directory/PXD057758/uniprot_SCerevisiae_6k_03_2024.fasta" \
-         "$results_directory/PXD037527/input-files/"
+       fast_files=(
+         "$data_directory/PXD057758/ConcatenatedHumanEntrapmentProteins_50percent.fasta"
+         "$data_directory/PXD057758/uniprot_SCerevisiae_6k_03_2024.fasta"
+       )
+
+       for fasta in "${fast_files[@]}"; do
+         base=$(basename "$fasta")
+
+         if [[ ! -e "$results_directory/PXD037527/input-files/$base" ]]; then
+           cp "$fasta" "$results_directory/PXD037527/input-files"
+         fi
+       done
      #+end_src
 
 *** FlashLFQ with PIP-ECHO
@@ -338,7 +346,7 @@
 
      https://github.com/Alexander-Sol/PIP-ECHOanalysis/tree/main
 
-*** ProteomicsLFQ w/ PIP-ECHO
+*** ProteomicsLFQ without PIP-ECHO
 
 **** Execution
 
@@ -353,8 +361,30 @@
        mzml_files=()
        mapfile -t mzml_files <"$results_directory/PXD037527/input-files/mzml_files.lst"
 
-       scripts/proteomicslfq.sh -e \
+       scripts/proteomicslfq.sh \
          -r "$results_directory/PXD037527/proteomicslfq" \
+         -f "$results_directory/PXD037527/input-files/ConcatenatedHumanEntrapmentProteins_50percent.fasta" \
+         -f "$results_directory/PXD037527/input-files/uniprot_SCerevisiae_6k_03_2024.fasta" \
+         "${mzml_files[@]}"
+     #+end_src
+
+*** ProteomicsLFQ with PIP-ECHO
+
+**** Execution
+
+     #+header: :exports code :results none
+     #+header: :shebang "#!/usr/bin/env bash"
+     #+header: :tangle scripts/run-proteomicslfq-echo-PXD037527.sh
+     #+begin_src sh
+       results_directory=$(realpath "results")
+
+       bash scripts/run-prep-PXD037527.sh
+
+       mzml_files=()
+       mapfile -t mzml_files <"$results_directory/PXD037527/input-files/mzml_files.lst"
+
+       scripts/proteomicslfq.sh -e \
+         -r "$results_directory/PXD037527/proteomicslfq-echo" \
          -f "$results_directory/PXD037527/input-files/ConcatenatedHumanEntrapmentProteins_50percent.fasta" \
          -f "$results_directory/PXD037527/input-files/uniprot_SCerevisiae_6k_03_2024.fasta" \
          "${mzml_files[@]}"
@@ -443,7 +473,6 @@
    #+results:
    | FileName                                                           | ScanNbr | PScanNr |       PMZ |      PRT | Seq               |
    | Ex_AuLC1_30m_2D19_3_20um30cm_SPE50_15118120_OTOT_2215_HeYe_1-calib |   53216 |   53175 | 996.51052 | 71.71669 | LIEPYVAYGYPSYSTIR |
-
 
 ** Finding the Peaks Manually
 
