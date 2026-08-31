@@ -59,17 +59,22 @@ function id_with_msgf() {
 
   local index_dir="msgf_index"
   mkdir -p "$index_dir"
+  final_fasta_file="$index_dir/combined.revCat.fasta"
 
   local fasta_dir="msgf_fasta_inputs"
   mkdir -p "$fasta_dir"
 
-  for file in "${option_fasta_files[@]}"; do
-    ln "$file" "$fasta_dir"
-  done
+  local input_fast_file
+  input_fast_file="$fasta_dir/combined.fasta"
+
+  if [[ ! -e "$input_fast_file" ]]; then
+    for file in "${option_fasta_files[@]}"; do
+      cat "$file" >>"$input_fast_file"
+    done
+  fi
 
   local msgf_index
-  msgf_index="$index_dir/$(basename "$fasta_dir").revCat.cseq"
-  final_fasta_file=$(realpath "$index_dir/$(basename "$fasta_dir").revCat.fasta")
+  msgf_index="$final_fasta_file.revCat.cseq"
 
   if [ ! -e "$msgf_index" ]; then
     # https://msgfplus.github.io/msgfplus/BuildSA.html
@@ -82,7 +87,7 @@ function id_with_msgf() {
       -Xmx6144m \
       -cp "$jar" \
       edu.ucsd.msjava.msdbsearch.BuildSA \
-      -d "$fasta_dir" \
+      -d "$input_fast_file" \
       -o "$index_dir" \
       -debug 0 \
       "${buildsa_flags[@]}"
