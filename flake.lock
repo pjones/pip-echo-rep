@@ -2,27 +2,27 @@
   "nodes": {
     "nixpkgs": {
       "locked": {
-        "lastModified": 1750259320,
-        "narHash": "sha256-H8J4H2XCIMEJ5g6fZ179QfQvsc2dUqhqfBjC8RAHNRY=",
+        "lastModified": 1787848966,
+        "narHash": "sha256-7gDpu5hpq0rOYnYMcOWqSzquK4HA/xU8Xf3CjUBOOJA=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "9ba04bda9249d5d5e5238303c9755de5a49a79c5",
+        "rev": "d57af924f160a5084293c71c2043f058bd1cdb60",
         "type": "github"
       },
       "original": {
         "owner": "NixOS",
-        "ref": "nixos-25.05",
+        "ref": "nixos-26.05",
         "repo": "nixpkgs",
         "type": "github"
       }
     },
     "nixpkgs_2": {
       "locked": {
-        "lastModified": 1759070547,
-        "narHash": "sha256-JVZl8NaVRYb0+381nl7LvPE+A774/dRpif01FKLrYFQ=",
+        "lastModified": 1781607440,
+        "narHash": "sha256-rxO+uc/KFbSJp+pgyXRuAX6QlG9hJdnt0BXpEQRXY+U=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "647e5c14cbd5067f44ac86b74f014962df460840",
+        "rev": "3e41b24abd260e8f71dbe2f5737d24122f972158",
         "type": "github"
       },
       "original": {
@@ -32,21 +32,38 @@
         "type": "github"
       }
     },
+    "openms": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1787913131,
+        "narHash": "sha256-Q9XY3m1ttlbrDKnSV6FH9KnEA8uMsW0P0NvRat0T5HU=",
+        "owner": "OpenMS",
+        "repo": "OpenMS",
+        "rev": "700d16bc9dd82a86a76e4116a4ae7e70d061b79e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "OpenMS",
+        "repo": "OpenMS",
+        "type": "github"
+      }
+    },
     "proteomics": {
       "inputs": {
-        "nixpkgs": "nixpkgs_2"
+        "nixpkgs": "nixpkgs_2",
+        "openms": "openms"
       },
       "locked": {
-        "lastModified": 1760092141,
-        "narHash": "sha256-4F41HLYrjij32TpdsEXKzrRmtBoN59SrP5PruYkBfMw=",
+        "lastModified": 1787920594,
+        "narHash": "sha256-SOofPVajdPCvrLNxkqU/vX1x48RjJC66vl7qzvTQeSA=",
         "owner": "pjones",
         "repo": "proteomics.nix",
-        "rev": "cad06ffc217d7b2d1d99727698190f2babe7007e",
+        "rev": "15ed5503fe6458f176d2639667d3d2b775cbc509",
         "type": "github"
       },
       "original": {
         "owner": "pjones",
-        "ref": "openms-3.5",
+        "ref": "openms-next",
         "repo": "proteomics.nix",
         "type": "github"
       }

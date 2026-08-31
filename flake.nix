@@ -2,11 +2,12 @@
   description = "Replicating and Comparing the PIP-ECHO Paper";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
-    proteomics.url = "github:pjones/proteomics.nix/openms-3.5";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+    proteomics.url = "github:pjones/proteomics.nix/openms-next";
   };
 
-  outputs = { self, nixpkgs, ... }:
+  outputs =
+    { self, nixpkgs, ... }:
     let
       supportedSystems = [
         "x86_64-linux"
@@ -16,35 +17,37 @@
       ];
 
       # Function to generate a set based on supported systems:
-      forAllSystems = f:
-        nixpkgs.lib.genAttrs supportedSystems (system: f system);
+      forAllSystems = f: nixpkgs.lib.genAttrs supportedSystems (system: f system);
 
       # Attribute set of nixpkgs for each system:
-      nixpkgsFor = forAllSystems (system:
-        import nixpkgs { inherit system; });
+      nixpkgsFor = forAllSystems (system: import nixpkgs { inherit system; });
 
       # Packages needed to build the wiki:
-      buildInputs = pkgs: with pkgs; [
-        (python3.withPackages (ps: with ps; [
-          pygments
-        ]))
+      buildInputs =
+        pkgs: with pkgs; [
+          (python3.withPackages (
+            ps: with ps; [
+              pygments
+            ]
+          ))
 
-        curl
-        jre
-        texliveFull
+          curl
+          jre
+          texliveFull
 
-        self.inputs.proteomics.packages.${pkgs.system}.comet
-        self.inputs.proteomics.packages.${pkgs.system}.flashlfq
-        self.inputs.proteomics.packages.${pkgs.system}.metamorpheus
-        self.inputs.proteomics.packages.${pkgs.system}.msgfplus
-        self.inputs.proteomics.packages.${pkgs.system}.openms
-        self.inputs.proteomics.packages.${pkgs.system}.percolator
-        self.inputs.proteomics.packages.${pkgs.system}.thermorawfp
+          self.inputs.proteomics.packages.${pkgs.system}.comet
+          self.inputs.proteomics.packages.${pkgs.system}.flashlfq
+          self.inputs.proteomics.packages.${pkgs.system}.metamorpheus
+          self.inputs.proteomics.packages.${pkgs.system}.msgfplus
+          self.inputs.proteomics.packages.${pkgs.system}.openms
+          self.inputs.proteomics.packages.${pkgs.system}.percolator
+          self.inputs.proteomics.packages.${pkgs.system}.thermorawfp
 
-      ];
+        ];
     in
     {
-      devShells = forAllSystems (system:
+      devShells = forAllSystems (
+        system:
         let
           pkgs = nixpkgsFor.${system};
           lib = pkgs.lib;
@@ -58,6 +61,7 @@
             # Help GDB find the STL pretty printer:
             PYTHON_LIBSTDCXX = "${pkgs.libgcc.lib}/share/gcc-${gccVer}/python";
           };
-        });
+        }
+      );
     };
 }
