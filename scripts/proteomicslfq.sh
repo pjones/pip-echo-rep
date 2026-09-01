@@ -342,7 +342,6 @@ function quantify_peptides() {
       -out "$mz_tab_file" \
       -out_cxml proteomicslfq.consensusXML \
       -out_msstats msstats.csv \
-      -out_triqler triqler.tsv \
       -debug 0 \
       "${proteomicslfq_flags[@]}"
   fi
