@@ -1,11 +1,12 @@
 process flashlfq {
     input:
-    path psmtsv
-    path calibration_task_dir
+    tuple path(psmtsv), path(peptides_tsv), path(calibration_task_dir)
 
     output:
-    path "flashlfq_AllPSMs.psmtsv", emit: "psmtsv"
-    path "flashlfq.log", emit: "log"
+    tuple path("QuantifiedPeaks.tsv"),
+          path("QuantifiedPeptides.tsv"),
+          path("QuantifiedProteins.tsv"),
+          path("flashlfq.log")
 
     script:
     """

@@ -40,7 +40,5 @@ workflow proteomicslfq {
     )
 
     emit:
-    mztab = lfq.out.mztab
-    consensus_xml = lfq.out.consensus_xml
-    msstats = lfq.out.msstats
+    lfq.out
 }

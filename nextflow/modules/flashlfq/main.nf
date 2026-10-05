@@ -7,13 +7,10 @@ workflow flashlfq {
     fasta_files
 
     main:
-    metamorpheus(
-        mzml_files,
-        fasta_files,
-    )
+    metamorpheus(mzml_files, fasta_files)
+    lfq(metamorpheus.out)
 
-    lfq(
-        metamorpheus.out.psmtsv,
-        metamorpheus.out.calibration_task_dir,
-    )
+    emit:
+    id = metamorpheus.out
+    quant = lfq.out
 }

@@ -4,8 +4,9 @@ process metamorpheus {
     path fast_files
 
     output:
-    path "Task3SearchTask/AllPSMs.psmtsv", emit: "psmtsv"
-    path "Task2CalibrationTask", emit: "calibration_task_dir"
+    tuple path("Task3SearchTask/AllPSMs.psmtsv"),
+          path("Task3SearchTask/AllPeptides.psmtsv"),
+          path("Task2CalibrationTask")
 
     script:
     """

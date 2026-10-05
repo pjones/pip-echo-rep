@@ -5,9 +5,9 @@ process proteomicslfq {
     path fasta_file
 
     output:
-    path "proteomicslfq.mzTab", emit: mztab
-    path "proteomicslfq.consensusXML", emit: consensus_xml
-    path "msstats.csv", emit: msstats
+    tuple path("proteomicslfq.mzTab"),
+          path("proteomicslfq.consensusXML"),
+          path("msstats.csv")
 
     script:
     """
