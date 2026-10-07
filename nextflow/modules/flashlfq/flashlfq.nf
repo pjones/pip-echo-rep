@@ -1,15 +1,21 @@
+nextflow.enable.types = true
+
 process flashlfq {
     input:
-    tuple path(psmtsv), path(peptides_tsv), path(calibration_task_dir)
+    record(
+      t3_psms: Path,
+      t2_cdir: Path,
+    )
 
     output:
-    tuple path("QuantifiedPeaks.tsv"),
-          path("QuantifiedPeptides.tsv"),
-          path("QuantifiedProteins.tsv"),
-          path("flashlfq.log")
+    record(
+      peaks: file("QuantifiedPeaks.tsv"),
+      peptides: file("QuantifiedPeptides.tsv"),
+      proteins: file("QuantifiedProteins.tsv")
+    )
 
     script:
     """
-    flashlfq.sh -d ${calibration_task_dir} -p "${psmtsv}"
+    flashlfq.sh -d ${t2_cdir} -p "${t3_psms}"
     """
 }

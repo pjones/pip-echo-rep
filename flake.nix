@@ -30,7 +30,7 @@
 
                 while IFS= read -r -d "" file; do
                   install --mode=0555 "$file" "$out/bin/"
-                done < <(find . -type f -name '*.sh' -print0)
+                done < <(find . -type f -print0)
               '';
             };
 
@@ -41,6 +41,7 @@
                 (with pkgs; [
                   curl
                   jre
+                  ruff
                 ])
                 ++ (with inputs.nextflow.packages.${system}; [
                   nextflow
@@ -59,6 +60,7 @@
                     p: with p; [
                       numpy
                       pandas
+                      pipe
                       pyopenms
                     ]
                   ))

@@ -1,8 +1,8 @@
-include { toMzML } from "./modules/thermo-to-mzml.nf"
+nextflow.enable.types = true
 
-include {
-    analysis as regular
-} from "./modules/analysis.nf"
+include { toMzML } from "./modules/thermo-to-mzml.nf"
+include { flashlfq } from "./modules/flashlfq/main.nf"
+include { proteomicslfq } from "./modules/proteomicslfq/main.nf"
 
 params {
     dataset: String = "PXD037527"
@@ -11,27 +11,25 @@ params {
 workflow {
     main:
     def spectra: Path = file("data/${params.dataset}/spectra.csv")
+    def mzml_dir: Path = spectra.parent
 
-    def fasta: List<Path> = file("data/${params.dataset}/fasta.csv")
+    def fasta = file("data/${params.dataset}/fasta.csv")
         .readLines()
-        .collect { line ->
-            file(spectra.parent.resolve(line))
-        }
+        .collect { line -> mzml_dir.resolve(line) }
 
-    def mzml_ch = channel.fromPath(spectra)
-        .splitCsv()
-        .map { line -> file(spectra.parent.resolve(line[0])) }
+    def mzml_ch = channel.fromPath("${spectra}")
+        .flatMap { csv -> csv.splitCsv(header: ["file"], skip: 0) }
+        .map { row -> mzml_dir.resolve(row.file) }
 
-    toMzML(mzml_ch)
-    regular(toMzML.out, fasta)
+    mzml_files = toMzML(mzml_ch)
+    flfq = flashlfq(mzml_files.collect().map { fs -> fs.toSorted() }, fasta)
+    plfq = proteomicslfq(mzml_files, fasta)
 
     publish:
-    mzml_files = toMzML.out
-
-    flashlfq_id_regular = regular.out.flashlfq_id
-    flashlfq_quant_regular = regular.out.flashlfq_quant
-
-    proteomicslfq_regular = regular.out.proteomicslfq
+    mzml_files = mzml_files
+    flashlfq_before = flfq.quant_before
+    flashlfq_after = flfq.quant_after
+    proteomicslfq_before = plfq
 }
 
 output {
@@ -39,15 +37,15 @@ output {
         path "${params.dataset}/mzML"
     }
 
-    flashlfq_id_regular {
+    flashlfq_before {
         path "${params.dataset}/flashlfq/regular"
     }
 
-    flashlfq_quant_regular {
+    flashlfq_after {
         path "${params.dataset}/flashlfq/regular"
     }
 
-    proteomicslfq_regular {
+    proteomicslfq_before {
         path "${params.dataset}/proteomicslfq/regular"
     }
 }

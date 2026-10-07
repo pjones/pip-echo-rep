@@ -1,9 +1,11 @@
+nextflow.enable.types = true
+
 process toMzML {
     input:
-    path raw_file
+    raw_file: Path
 
     output:
-    path "${raw_file.simpleName}.mzML"
+    file("${raw_file.simpleName}.mzML")
 
     script:
     """

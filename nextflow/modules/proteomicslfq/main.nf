@@ -34,8 +34,8 @@ workflow proteomicslfq {
     consensus(zip(msgfplus_features.out, comet_features.out))
 
     lfq(
-        mzml_files.collect(),
-        consensus.out.idxml.collect(),
+        mzml_files.collect().map { fs -> fs.toSorted() },
+        consensus.out.idxml.collect().map { fs -> fs.toSorted() },
         fasta_with_decoys.out.database,
     )
 
