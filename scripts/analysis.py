@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 
+import json
 import argparse
 import logging
 import re
@@ -54,7 +55,8 @@ class FlashLFQ:
 
     def run(self):
         stats = self._fdp()
-        print(stats["false_discovery_proportion"])
+        self.log.info(json.dumps(stats, indent=2))
+        return stats
 
     def _fdp(self):
         peaks = self._load_peaks(self.orig_path)
@@ -151,18 +153,23 @@ class FlashLFQ:
             "nper": nper,
             "fder": fder,
             "false_discovery_proportion": false_discovery_proportion,
+            "nper_results": nper_results,
         }
 
     def _get_native_peak_error_rate(self, score_threshold):
         original_peaks = self._load_peaks(self.orig_path)
         original_peaks = original_peaks[original_peaks["Peak RT Apex"] != "-"]
+        self.log.info(f"original_peaks.shape = {original_peaks.shape}")
 
         censored_psms = self._load_censored_psms()
+        self.log.info(f"censored_psms.shape = {censored_psms.shape}")
+
         censored_peaks = pd.merge(
             censored_psms,
             original_peaks,
             on=["File Name", "Full Sequence"],
         )
+        self.log.info(f"censored_peaks.shape = {censored_peaks.shape}")
 
         censored_peaks = censored_peaks[
             [
@@ -204,11 +211,9 @@ class FlashLFQ:
             on=["File Name", "Full Sequence"],
         )
 
-        peak_join["Agreement"] = peak_join.apply(
-            lambda x: self._check_overlap_time(x, self.rt_delta), axis=1
-        )
-
+        peak_join["Agreement"] = peak_join.apply(self._check_overlap_time, axis=1)
         peak_join.sort_values(by="Agreement", ascending=False, inplace=True)
+        peak_join.to_csv("peak_join_pre_drop.csv")
 
         # compare the old and new results (here, 1 means the match, 0 means they dont)
         peak_join.drop_duplicates(
@@ -218,6 +223,7 @@ class FlashLFQ:
         censored_peaks.drop_duplicates(
             subset=["File Name", "Full Sequence"], keep="first", inplace=True
         )
+
         sensitivity = peak_join.shape[0] / censored_peaks.shape[0]
 
         if peak_join.shape[0] == 0:
@@ -226,28 +232,25 @@ class FlashLFQ:
         peak_join.sort_values(by="PIP Q-Value", ascending=True, inplace=True)
         peak_join["good_transfers"] = (peak_join["Agreement"] == 1).cumsum()
         peak_join["bad_transfers"] = (peak_join["Agreement"] == 0).cumsum()
-        peak_join["error_rate"] = peak_join.apply(
-            lambda x: self._calculate_error_rate(x), axis=1
-        )
+        peak_join["error_rate"] = peak_join.apply(self._calculate_error_rate, axis=1)
+        peak_join.to_csv("peak_join_post_drop.csv")
 
         return {
             "sensitivity": sensitivity,
             "error_rate": peak_join["error_rate"].iloc[-1],
         }
 
-    def _check_overlap_time(self, table, rt_delta):
-        pip_apex = float(table["Peak RT Apex_y"])
-        ms_apex = float(table["Peak RT Apex_x"])
+    def _check_overlap_time(self, row):
+        pip_apex = float(row["Peak RT Apex_y"])
+        ms_apex = float(row["Peak RT Apex_x"])
 
-        if abs(pip_apex - ms_apex) < rt_delta:
+        if abs(pip_apex - ms_apex) < self.rt_delta:
             return 1
         else:
             return 0
 
-    def _calculate_error_rate(self, table):
-        return table["bad_transfers"] / (
-            table["good_transfers"] + table["bad_transfers"]
-        )
+    def _calculate_error_rate(self, row):
+        return row["bad_transfers"] / (row["good_transfers"] + row["bad_transfers"])
 
     def _load_peaks(self, directory):
         file_name = directory / "QuantifiedPeaks.tsv"
