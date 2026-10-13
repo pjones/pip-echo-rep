@@ -23,13 +23,15 @@ workflow {
 
     mzml_files = toMzML(mzml_ch)
     flfq = flashlfq(mzml_files.collect().map { fs -> fs.toSorted() }, fasta)
-    plfq = proteomicslfq(mzml_files, fasta)
+
+    // plfq = proteomicslfq(mzml_files, fasta)
 
     publish:
     mzml_files = mzml_files
     flashlfq_before = flfq.quant_before
     flashlfq_after = flfq.quant_after
-    proteomicslfq_before = plfq
+    flashlfq_censored = flfq.censored
+    // proteomicslfq_before = plfq
 }
 
 output {
@@ -38,14 +40,18 @@ output {
     }
 
     flashlfq_before {
-        path "${params.dataset}/flashlfq/regular"
+        path "${params.dataset}/flashlfq/original"
     }
 
     flashlfq_after {
-        path "${params.dataset}/flashlfq/regular"
+        path "${params.dataset}/flashlfq/censored"
     }
 
-    proteomicslfq_before {
-        path "${params.dataset}/proteomicslfq/regular"
+    flashlfq_censored {
+        path "${params.dataset}/flashlfq/censored"
     }
+
+    // proteomicslfq_before {
+    //     path "${params.dataset}/proteomicslfq/regular"
+    // }
 }

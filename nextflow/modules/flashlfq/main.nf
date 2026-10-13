@@ -21,13 +21,14 @@ workflow flashlfq {
     id_before = mm_before(mzml_files, fasta_files)
     quant_before = lfq_before(id_before)
 
-    censored_mzml = censor(mzml_files, id_before).map { c -> c.toSorted() }
+    censored = censor(mzml_files, id_before)
+    censored_mzml = censored.map { c -> c.mzml.toSorted() }
 
     id_after = mm_after(censored_mzml, fasta_files)
     quant_after = lfq_after(id_after)
 
     emit:
-    censored_mzml: Value<List<Path>> = censored_mzml
+    censored: Value<Record> = censored
     quant_before: Value<Record> = quant_before
     quant_after: Value<Record> = quant_after
 }

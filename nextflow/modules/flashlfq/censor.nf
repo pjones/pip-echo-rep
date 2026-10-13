@@ -9,7 +9,10 @@ process censor {
     )
 
     output:
-    files("*-censored.mzML")
+    record(
+        mzml: files("*-censored.mzML"),
+        psms: file("censored.psmtsv")
+    )
 
     script:
     """
