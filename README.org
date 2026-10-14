@@ -20,6 +20,11 @@
 
 ** Datasets
 
+   *Note:* The instructions in this section were originally used to
+   fetch all of the needed data.  However, the data are now in
+   =git-annex= and can be fetched with =git annex pull= once configured
+   properly.
+
 *** Descriptions and Links
 
     - Two-proteome dataset :: ProteomeXchange Consortium [[https://proteomecentral.proteomexchange.org/cgi/GetDataset?ID=PXD014415][PXD014415]]
@@ -41,10 +46,6 @@
       NOTE: As of [2025-06-20 Fri] this dataset is still marked as
       private on PRIDE.  There are 86 files that would need to be
       download manually using a reviewer account.
-
-      Username: =reviewer_pxd057758@ebi.ac.uk=
-
-      Password: =bIxId0auCLHw=
 
 *** Downloading Private PRIDE Data
 
