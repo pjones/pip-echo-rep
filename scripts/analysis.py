@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 
-import json
 import argparse
+import json
 import logging
 import re
 from pathlib import Path
@@ -12,9 +12,22 @@ import pandas as pd
 
 ################################################################################
 class DataHelper:
-    def __init__(self, data_dir: Path):
+    def __init__(
+        self, data_dir: Path, dataset_name: str, orig_path: Path, censored_path: Path
+    ):
         self.data_dir = data_dir
+        self.dataset_name = dataset_name
         self.entrapment_seqs_set = set()
+
+        self.orig_path = orig_path
+        self.censored_path = censored_path
+
+        # These need to be configured from the outside depending on
+        # the data set:
+        self.human_file_pattern = "_1x02nguL_"
+        self.foreign_species = "Saccharomyces cerevisiae"
+        self.q_value = 0.01
+        self.rt_delta = 40 * 0.01
 
     def path(self, file):
         return self.data_dir / "PXD057758" / file
@@ -34,23 +47,8 @@ class DataHelper:
 ################################################################################
 # Adapted from: https://github.com/Alexander-Sol/PIP-ECHOanalysis.git
 class FlashLFQ:
-    def __init__(self, data_dir, orig_path, censored_path):
-        self.data = DataHelper(data_dir)
-        self.orig_path = orig_path
-        self.censored_path = censored_path
-
-        # These need to be configured from the outside depending on
-        # the data set:
-        self.human_file_pattern = "_1x02nguL_"
-        self.foreign_species = "Yeast"
-        self.q_value = 0.01
-        self.rt_delta = 40 * 0.01
-
-        # Scaling factor for entrapment calculations, based on the
-        # ratio on the number of entrapment peptide sequences and
-        # human peptide sequences in the database
-        self.scaling_factor = 1 + 3105275 / 3608159
-
+    def __init__(self, data: DataHelper):
+        self.data = data
         self.log = logging.getLogger(__name__)
 
     def run(self):
@@ -59,28 +57,28 @@ class FlashLFQ:
         return stats
 
     def _fdp(self):
-        peaks = self._load_peaks(self.orig_path)
+        peaks = self._load_peaks(self.data.orig_path)
         entrapment_seqs = self.data.entrapment_seqs()
 
         # Limit to the human mzML files:
-        peaks = peaks.loc[peaks["File Name"].str.contains(self.human_file_pattern)]
+        peaks = peaks.loc[peaks["File Name"].str.contains(self.data.human_file_pattern)]
 
-        msms_detected_yeast_peaks = peaks.loc[
+        msms_detected_foreign_peaks = peaks.loc[
             (peaks["Peak Detection Type"] == "MSMS")
-            & (peaks["Organism"].str.contains(self.foreign_species))
+            & (peaks["Organism"].str.contains(self.data.foreign_species))
         ]
 
-        msms_detected_yeast_peaks.drop_duplicates(
-            subset=["Full Sequence"], keep="first", inplace=True
+        msms_detected_foreign_peaks = msms_detected_foreign_peaks.drop_duplicates(
+            subset=["Full Sequence"], keep="first"
         )
 
-        msms_yeast_seqs = msms_detected_yeast_peaks["Full Sequence"].tolist()
+        msms_foreign_seqs = msms_detected_foreign_peaks["Full Sequence"].tolist()
 
         msms_peaks = peaks.loc[
             (peaks["Peak Detection Type"] == "MSMS")
             & (peaks["Decoy Peptide"] == False)
             & (
-                (peaks["Organism"].str.contains(self.foreign_species))
+                (peaks["Organism"].str.contains(self.data.foreign_species))
                 | (peaks["Organism"].str.contains("Homo sapiens"))
                 | (peaks["Organism"].str.contains("Arabidopsis"))
             )
@@ -90,7 +88,7 @@ class FlashLFQ:
 
         peaks = peaks.loc[
             (peaks["Peak Detection Type"] == "MBR")
-            & (peaks["PIP Q-Value"] < self.q_value)
+            & (peaks["PIP Q-Value"] < self.data.q_value)
             & (peaks["Decoy Peptide"] == False)
         ]
 
@@ -114,38 +112,52 @@ class FlashLFQ:
         human_count = human_peaks.shape[0]
         arabida_count = entrapment_peaks.shape[0]
 
-        yeast_peaks = peaks.loc[peaks["Organism"].str.contains(self.foreign_species)]
-        yeast_peaks = yeast_peaks.loc[
-            ~yeast_peaks["Organism"].str.contains("Homo sapiens")
+        foreign_peaks = peaks.loc[
+            peaks["Organism"].str.contains(self.data.foreign_species)
         ]
-        yeast_count = yeast_peaks.shape[0]
+        foreign_peaks = foreign_peaks.loc[
+            ~foreign_peaks["Organism"].str.contains("Homo sapiens")
+        ]
+        foreign_count = foreign_peaks.shape[0]
 
-        msms_yeast_count = sum(yeast_peaks["Full Sequence"].isin(msms_yeast_seqs))
-        yeast_count = yeast_count - msms_yeast_count
+        msms_foreign_count = sum(foreign_peaks["Full Sequence"].isin(msms_foreign_seqs))
+        foreign_count = foreign_count - msms_foreign_count
 
         score_threshold = peaks["PIP PEP"].max()
 
         # calculate the error rate for (presumably) native human transfers
         nper_results = self._get_native_peak_error_rate(score_threshold)
 
-        scaled_arabida = arabida_count * self.scaling_factor
+        # Scaling factor for entrapment calculations, based on the
+        # ratio on the number of entrapment peptide sequences and
+        # human peptide sequences in the database
+        scaling_factor = 1 + (arabida_count + human_count) / arabida_count
+
+        if scaling_factor < 1.0 or scaling_factor > 2.0:
+            self.log.warning(f"wacky scaling_factor {scaling_factor}, expected 1.86")
+
+        scaled_arabida = arabida_count * scaling_factor
         scaled_nper = human_count * nper_results["error_rate"]
 
-        total = human_count + yeast_count + arabida_count
+        total = human_count + foreign_count + arabida_count
         total = max(1, total)
 
-        fper = 100 * yeast_count / total
+        fper = 100 * foreign_count / total
         nper = 100 * scaled_nper / total
         fder = 100 * scaled_arabida / total
 
         false_discovery_proportion = fper + nper + fder
 
         return {
+            "tool": "flashlfq",
+            "dataset": self.data.dataset_name,
+            "q_value": self.data.q_value,
             "human": human_count,
-            "foreign": yeast_count,
+            "foreign": foreign_count,
             "arabida": arabida_count,
             "total": total,
             "msms_count": msms_count,
+            "scaling_factor": scaling_factor,
             "scaled_arabida": scaled_arabida,
             "scaled_nper": scaled_nper,
             "sensitivity": nper_results["sensitivity"],
@@ -157,7 +169,7 @@ class FlashLFQ:
         }
 
     def _get_native_peak_error_rate(self, score_threshold):
-        original_peaks = self._load_peaks(self.orig_path)
+        original_peaks = self._load_peaks(self.data.orig_path)
         original_peaks = original_peaks[original_peaks["Peak RT Apex"] != "-"]
         self.log.info(f"original_peaks.shape = {original_peaks.shape}")
 
@@ -183,14 +195,14 @@ class FlashLFQ:
             ]
         ]
 
-        new_peaks = self._load_peaks(self.censored_path)
+        new_peaks = self._load_peaks(self.data.censored_path)
         new_peaks = new_peaks.loc[
             (new_peaks["Peak Detection Type"] == "MBR")
             & (new_peaks["Random RT"] == False)
             & (new_peaks["Decoy Peptide"] == False)
         ]
 
-        new_peaks = new_peaks.loc[(new_peaks["PIP Q-Value"] < self.q_value)]
+        new_peaks = new_peaks.loc[(new_peaks["PIP Q-Value"] < self.data.q_value)]
         new_peaks = new_peaks[
             [
                 "File Name",
@@ -224,8 +236,6 @@ class FlashLFQ:
             subset=["File Name", "Full Sequence"], keep="first", inplace=True
         )
 
-        sensitivity = peak_join.shape[0] / censored_peaks.shape[0]
-
         if peak_join.shape[0] == 0:
             return {"sensitivity": 0, "error_rate": 0}
 
@@ -236,7 +246,7 @@ class FlashLFQ:
         peak_join.to_csv("peak_join_post_drop.csv")
 
         return {
-            "sensitivity": sensitivity,
+            "sensitivity": peak_join.shape[0] / censored_peaks.shape[0],
             "error_rate": peak_join["error_rate"].iloc[-1],
         }
 
@@ -244,7 +254,7 @@ class FlashLFQ:
         pip_apex = float(row["Peak RT Apex_y"])
         ms_apex = float(row["Peak RT Apex_x"])
 
-        if abs(pip_apex - ms_apex) < self.rt_delta:
+        if abs(pip_apex - ms_apex) < self.data.rt_delta:
             return 1
         else:
             return 0
@@ -262,7 +272,7 @@ class FlashLFQ:
         return peaks
 
     def _load_censored_psms(self):
-        file_name = self.censored_path / "censored.psmtsv"
+        file_name = self.data.censored_path / "censored.psmtsv"
         return pd.read_csv(file_name, sep="\t")
 
 
@@ -275,12 +285,17 @@ if __name__ == "__main__":
         description="Analyze the performance for PIP FDR",
     )
 
+    parser.add_argument("--id", required=True, type=str)
     parser.add_argument("--data", required=True, type=Path)
     parser.add_argument("--tool", required=True, choices=["flashlfq"])
     parser.add_argument("file", action="extend", nargs="+", type=Path)
 
     args = parser.parse_args()
+    data = DataHelper(args.data, args.id, *args.file)
 
     if args.tool == "flashlfq":
-        flashlfq = FlashLFQ(args.data, *args.file)
-        flashlfq.run()
+        flashlfq = FlashLFQ(data)
+        results = flashlfq.run()
+
+        with open("analysis.json", "w") as file:
+            file.write(json.dumps(results))
