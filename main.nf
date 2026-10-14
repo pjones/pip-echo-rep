@@ -5,7 +5,18 @@ include { flashlfq } from "./modules/flashlfq/main.nf"
 include { proteomicslfq } from "./modules/proteomicslfq/main.nf"
 
 params {
+    fdrs: List<Float> = [ 0.01, 0.025, 0.5 ]
+
     dataset: String = "PXD037527"
+    data_dir: Path = file("data")
+    human_file_pattern: String = "_1x02nguL_"
+    foreign_species: String = "Saccharomyces cerevisiae"
+    rt_delta: Float = 40 * 0.01
+
+    ppm_tolerance: Float = 10.0
+    isotope_ppm_tolerance: Float = 5.0
+    num_isotopes_required: Integer = 2
+    mbr_rt_window: Float = 1.5 // Minutes
 }
 
 workflow {
@@ -21,16 +32,16 @@ workflow {
         .flatMap { csv -> csv.splitCsv(header: ["file"], skip: 0) }
         .map { row -> mzml_dir.resolve(row.file) }
 
+    def fdr_ch = channel.fromList(params.fdrs)
+
     mzml_files = toMzML(mzml_ch)
-    flfq = flashlfq(mzml_files.collect().map { fs -> fs.toSorted() }, fasta)
+    flfq = flashlfq(fdr_ch, mzml_files.collect().map { fs -> fs.toSorted() }, fasta)
 
     // plfq = proteomicslfq(mzml_files, fasta)
 
     publish:
     mzml_files = mzml_files
-    flashlfq_before = flfq.quant_before
-    flashlfq_after = flfq.quant_after
-    flashlfq_censored = flfq.censored
+    flashlfq = flfq.analyzed
     // proteomicslfq_before = plfq
 }
 
@@ -39,16 +50,8 @@ output {
         path "${params.dataset}/mzML"
     }
 
-    flashlfq_before {
-        path "${params.dataset}/flashlfq/original"
-    }
-
-    flashlfq_after {
-        path "${params.dataset}/flashlfq/censored"
-    }
-
-    flashlfq_censored {
-        path "${params.dataset}/flashlfq/censored"
+    flashlfq {
+        path "${params.dataset}/flashlfq"
     }
 
     // proteomicslfq_before {

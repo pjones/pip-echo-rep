@@ -13,21 +13,27 @@ import pandas as pd
 ################################################################################
 class DataHelper:
     def __init__(
-        self, data_dir: Path, dataset_name: str, orig_path: Path, censored_path: Path
+        self,
+        data_dir: Path,
+        dataset_name: str,
+        censored_manifest: Path,
+        orig_path: Path,
+        censored_path: Path,
     ):
         self.data_dir = data_dir
         self.dataset_name = dataset_name
         self.entrapment_seqs_set = set()
 
+        self.censored_manifest = censored_manifest
         self.orig_path = orig_path
         self.censored_path = censored_path
 
         # These need to be configured from the outside depending on
         # the data set:
-        self.human_file_pattern = "_1x02nguL_"
-        self.foreign_species = "Saccharomyces cerevisiae"
-        self.q_value = 0.01
-        self.rt_delta = 40 * 0.01
+        self.human_file_pattern = None
+        self.foreign_species = None
+        self.q_value = None
+        self.rt_delta = None
 
     def path(self, file):
         return self.data_dir / "PXD057758" / file
@@ -52,6 +58,7 @@ class FlashLFQ:
         self.log = logging.getLogger(__name__)
 
     def run(self):
+        self.log.info("analyzing output from FlashLFQ")
         stats = self._fdp()
         self.log.info(json.dumps(stats, indent=2))
         return stats
@@ -65,7 +72,7 @@ class FlashLFQ:
 
         msms_detected_foreign_peaks = peaks.loc[
             (peaks["Peak Detection Type"] == "MSMS")
-            & (peaks["Organism"].str.contains(self.data.foreign_species))
+            & (peaks["Organism"].str.contains(self.data.foreign_species, na=False))
         ]
 
         msms_detected_foreign_peaks = msms_detected_foreign_peaks.drop_duplicates(
@@ -78,9 +85,9 @@ class FlashLFQ:
             (peaks["Peak Detection Type"] == "MSMS")
             & (peaks["Decoy Peptide"] == False)
             & (
-                (peaks["Organism"].str.contains(self.data.foreign_species))
-                | (peaks["Organism"].str.contains("Homo sapiens"))
-                | (peaks["Organism"].str.contains("Arabidopsis"))
+                (peaks["Organism"].str.contains(self.data.foreign_species, na=False))
+                | (peaks["Organism"].str.contains("Homo sapiens", na=False))
+                | (peaks["Organism"].str.contains("Arabidopsis", na=False))
             )
         ]
 
@@ -96,7 +103,9 @@ class FlashLFQ:
             (peaks["Random RT"] == False) & (peaks["Decoy Peptide"] == False)
         ]
 
-        human_peaks = peaks.loc[peaks["Organism"].str.contains("Homo sapiens")]
+        human_peaks = peaks.loc[
+            peaks["Organism"].str.contains("Homo sapiens", na=False)
+        ]
 
         # Our entrapment database has a bunch of scrambled sequences
         # appended to the end of the DB, which is why we're checking
@@ -113,10 +122,10 @@ class FlashLFQ:
         arabida_count = entrapment_peaks.shape[0]
 
         foreign_peaks = peaks.loc[
-            peaks["Organism"].str.contains(self.data.foreign_species)
+            peaks["Organism"].str.contains(self.data.foreign_species, na=False)
         ]
         foreign_peaks = foreign_peaks.loc[
-            ~foreign_peaks["Organism"].str.contains("Homo sapiens")
+            ~foreign_peaks["Organism"].str.contains("Homo sapiens", na=True)
         ]
         foreign_count = foreign_peaks.shape[0]
 
@@ -272,13 +281,16 @@ class FlashLFQ:
         return peaks
 
     def _load_censored_psms(self):
-        file_name = self.data.censored_path / "censored.psmtsv"
-        return pd.read_csv(file_name, sep="\t")
+        return pd.read_csv(self.data.censored_manifest, sep="\t")
 
 
 ################################################################################
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
+    logopts = {
+        "format": "[%(asctime)s %(levelname)s]: %(message)s",
+        "datefmt": "%Y-%m-%dT%H:%M:%S",
+        "level": logging.DEBUG,
+    }
 
     parser = argparse.ArgumentParser(
         prog="analysis.py",
@@ -287,15 +299,37 @@ if __name__ == "__main__":
 
     parser.add_argument("--id", required=True, type=str)
     parser.add_argument("--data", required=True, type=Path)
+    parser.add_argument("--censored-manifest", required=True, type=Path)
+    parser.add_argument("--output", default="analysis.json", type=Path)
+    parser.add_argument("--log", type=Path)
+
     parser.add_argument("--tool", required=True, choices=["flashlfq"])
+    parser.add_argument("--qval", default=0.01, type=float)
+    parser.add_argument("--human-file-pattern", default="_1x02nguL_")
+    parser.add_argument("--foreign-species", default="Saccharomyces cerevisiae")
+    parser.add_argument("--rt-delta", default=(40 * 0.01), type=float)
+
     parser.add_argument("file", action="extend", nargs="+", type=Path)
 
     args = parser.parse_args()
-    data = DataHelper(args.data, args.id, *args.file)
+
+    if args.log is not None:
+        logopts["filename"] = args.log
+
+    logging.basicConfig(**logopts)
+
+    data = DataHelper(args.data, args.id, args.censored_manifest, *args.file)
+    data.q_value = args.qval
+    data.human_file_pattern = args.human_file_pattern
+    data.foreign_species = args.foreign_species
+    data.rt_delta = args.rt_delta
+
+    results = None
 
     if args.tool == "flashlfq":
         flashlfq = FlashLFQ(data)
         results = flashlfq.run()
 
-        with open("analysis.json", "w") as file:
-            file.write(json.dumps(results))
+    if results is not None:
+        with open(args.output, "w") as file:
+            file.write(json.dumps(results, indent=2))

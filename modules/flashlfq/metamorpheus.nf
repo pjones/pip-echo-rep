@@ -9,7 +9,7 @@ process metamorpheus {
     record(
       t1_psms: file("Task1SearchTask/AllPSMs.psmtsv"),
       t1_peps: file("Task1SearchTask/AllPeptides.psmtsv"),
-      t2_cdir: file("Task2CalibrationTask"),
+      t2_mzml: files("Task2CalibrationTask/*.mzML"),
       t3_psms: file("Task3SearchTask/AllPSMs.psmtsv"),
       t3_peps: file("Task3SearchTask/AllPeptides.psmtsv"),
     )

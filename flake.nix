@@ -9,7 +9,7 @@
   outputs =
     inputs:
     inputs.flake-parts.lib.mkFlake { inherit inputs; } (
-      { self, ... }: {
+      { ... }: {
         systems = [
           "x86_64-linux"
           "aarch64-darwin"
@@ -19,21 +19,6 @@
         perSystem =
           { pkgs, system, ... }:
           {
-            packages.scripts = pkgs.stdenvNoCC.mkDerivation {
-              pname = "scripts";
-              version = "0.0.1";
-              src = ./scripts;
-              dontBuild = true;
-
-              installPhase = ''
-                mkdir -p "$out/bin"
-
-                while IFS= read -r -d "" file; do
-                  install --mode=0555 "$file" "$out/bin/"
-                done < <(find . -type f -print0)
-              '';
-            };
-
             devShells.default = pkgs.mkShell {
               NIX_PATH = "nixpkgs=${pkgs.path}";
 
@@ -64,10 +49,7 @@
                       pyopenms
                     ]
                   ))
-                ])
-                ++ [
-                  self.packages.${system}.scripts
-                ];
+                ]);
             };
           };
       }

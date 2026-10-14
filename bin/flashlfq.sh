@@ -5,6 +5,13 @@ set -eu
 set -o pipefail
 
 ################################################################################
+option_ppm_tolerance="10.0"
+option_isotope_ppm_tolerance="5.0"
+option_num_isotopes_required="2"
+option_mbr_rt_window="1.5" # Minutes
+option_fdr="0.01"
+
+################################################################################
 function usage() {
   cat <<EOF
 Usage: $(basename "$0") [options]
@@ -12,6 +19,12 @@ Usage: $(basename "$0") [options]
   -d DIR  Directory containing Metamorpheus output mzML files
   -h      This message
   -p FILE The PSMs TSV file
+
+  -F FLOAT MBR FDR
+  -I FLOAT Isotope PPM tolerance
+  -N INT   Number of isotopes required
+  -P FLOAT PPM Tolerance
+  -W FLOAT MBR RT Window
 
 EOF
 }
@@ -46,10 +59,17 @@ function flashlfq() {
   if [ ! -e QuantifiedPeptides.tsv ]; then
     log "running FlashLFQ"
     time FlashLFQ \
-      --rea --ath \
-      --out . --idt "$fixed_psms_file" --rep "$mzml_dir" \
-      --ppm 10.0 --iso 5.0 --nis 2 \
-      --mbr --mrt 1.5 --pipfdr 0.01 |
+      --rea \
+      --ath \
+      --out . \
+      --idt "$fixed_psms_file" \
+      --rep "$mzml_dir" \
+      --ppm "${option_ppm_tolerance}" \
+      --iso "${option_isotope_ppm_tolerance}" \
+      --nis "${option_num_isotopes_required}" \
+      --mbr \
+      --mrt "${option_mbr_rt_window}" \
+      --pipfdr "${option_fdr}" |
       tee "flashlfq.log"
   fi
 }
@@ -59,7 +79,7 @@ function main() {
   local psms_file
   local mzml_dir
 
-  while getopts "d:hp:" o; do
+  while getopts "d:hp:F:P:I:N:W:" o; do
     case "${o}" in
     d)
       mzml_dir=$OPTARG
@@ -70,8 +90,28 @@ function main() {
       exit
       ;;
 
+    F)
+      option_fdr=$OPTARG
+      ;;
+
+    I)
+      option_isotope_ppm_tolerance=$OPTARG
+      ;;
+
+    N)
+      option_num_isotopes_required=$OPTARG
+      ;;
+
     p)
       psms_file=$OPTARG
+      ;;
+
+    P)
+      option_ppm_tolerance=$OPTARG
+      ;;
+
+    W)
+      option_mbr_rt_window=$OPTARG
       ;;
 
     *)

@@ -12,8 +12,8 @@ function usage() {
   cat <<EOF
 Usage: $(basename "$0") [options] mzML [mzML]
 
-  -h      This message
-  -f FILE Add a FASTA file
+  -h       This message
+  -f FILE  Add a FASTA file
 
 EOF
 }
