@@ -1,10 +1,12 @@
+nextflow.enable.types = true
+
 // Create a protein database with decoys.
 process fasta_with_decoys {
     input:
-    val fasta_files
+    fasta_files: List<Path>
 
     output:
-    path "database.revCat.fasta", emit: database
+    file("database.revCat.fasta")
 
     script:
     """

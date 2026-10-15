@@ -1,3 +1,5 @@
+nextflow.enable.types = true
+
 include { fasta_with_decoys } from "./decoy.nf"
 include { msgfplus } from "./msgfplus.nf"
 include { comet } from "./comet.nf"
@@ -9,36 +11,42 @@ include {
     features as comet_features
 } from "./features.nf"
 
-// zip :: Channel<Tuple<ID, a>, Tuple<ID, b>> -> Channel<Tuple<a, b>>
-def zip(a, b) {
-    a
-        .map { t -> record(id: t[0], a: t[1]) }
-        .join(b.map { t -> record(id: t[0], b: t[1]) }, by: 'id')
-        .map { r -> [r.a, r.b] }
+// Emit the files stored in channel as a sorted list.
+def as_sorted_files(ch) {
+    ch.collect().map { files -> files.toSorted() {f -> f.simpleName} }
 }
 
 workflow proteomicslfq {
     take:
-    mzml_files
-    fasta_files
+    mbr_fdr: Float
+    mzml_files: Channel<Path>
+    fasta_files: List<Path>
 
     main:
-    fasta_with_decoys(fasta_files)
+    fasta = fasta_with_decoys(fasta_files)
 
-    msgfplus(mzml_files, fasta_with_decoys.out.database)
-    msgfplus_features(msgfplus.out)
+    msgf_id = msgfplus(mzml_files, fasta)
+    msgf_feat = msgfplus_features(msgf_id)
 
-    comet(mzml_files, fasta_with_decoys.out.database)
-    comet_features(comet.out)
+    comet_id = comet(mzml_files, fasta)
+    comet_feat = comet_features(comet_id)
 
-    consensus(zip(msgfplus_features.out, comet_features.out))
+    def id_files_ch =
+        msgf_feat
+        .map { r -> record(base: r.base, msgfplus: r.percolator) }
+        .join(comet_feat.map { r -> record(base: r.base, comet: r.percolator) }, by: "base")
 
-    lfq(
-        mzml_files.collect().map { fs -> fs.toSorted() },
-        consensus.out.idxml.collect().map { fs -> fs.toSorted() },
-        fasta_with_decoys.out.database,
+    consensus_id = consensus(id_files_ch)
+    id_before = mzml_files.mix(consensus_id)
+
+    quant = lfq(
+        mbr_fdr,
+        as_sorted_files(mzml_files),
+        as_sorted_files(consensus_id),
+        fasta
     )
 
     emit:
-    lfq.out
+    id_before: Channel<Path> = id_before
+    quant_before: Channel<Record> = quant
 }

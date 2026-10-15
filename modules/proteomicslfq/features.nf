@@ -1,21 +1,30 @@
+nextflow.enable.types = true
+
 process features {
     input:
-    tuple val(id), path(idxml_file)
+    record(
+        base: String,
+        idxml: Path,
+    )
 
     output:
-    tuple val(id), path("${idxml_file.simpleName}_perc.idXML")
+    record(
+        base: base,
+        feature: file("${base}_feature.idXML"),
+        percolator: file("${base}_percolator.idXML"),
+    )
 
     script:
     """
     PSMFeatureExtractor \
-      -in "${idxml_file}" \
-      -out "${idxml_file.simpleName}_feat.idXML" \
+      -in "${idxml}" \
+      -out "${base}_feature.idXML" \
       -threads ${task.cpus} \
       -debug 0
 
     PercolatorAdapter \
-      -in "${idxml_file.simpleName}_feat.idXML" \
-      -out "${idxml_file.simpleName}_perc.idXML" \
+      -in "${base}_feature.idXML" \
+      -out "${base}_percolator.idXML" \
       -threads ${task.cpus} \
       -subset_max_train 300000 \
       -decoy_pattern "DECOY_" \

@@ -1,10 +1,15 @@
+nextflow.enable.types = true
+
 process comet {
     input:
-    path mzml_file
-    path fasta_file
+    mzml_file: Path
+    fasta_file: Path
 
     output:
-    tuple val(mzml_file.simpleName), path("${mzml_file.simpleName}_comet.idXML")
+    record(
+        base: mzml_file.simpleName,
+        idxml: file("${mzml_file.simpleName}_comet.idXML")
+    )
 
     script:
     """

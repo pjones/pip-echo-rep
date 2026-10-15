@@ -1,13 +1,18 @@
+nextflow.enable.types = true
+
 process proteomicslfq {
     input:
-    val mzml_files
-    val idxml_files
-    path fasta_file
+    mbr_fdr: Float
+    mzml_files: List<Path>
+    idxml_files: List<Path>
+    fasta_file: Path
 
     output:
-    tuple path("proteomicslfq.mzTab"),
-          path("proteomicslfq.consensusXML"),
-          path("msstats.csv")
+    record(
+        mztab: file("proteomicslfq.mzTab"),
+        consensus: file("proteomicslfq.consensusXML"),
+        msstats: file("msstats.csv"),
+    )
 
     script:
     """
@@ -16,6 +21,7 @@ process proteomicslfq {
       -ids ${idxml_files.join(' ')} \
       -fasta "${fasta_file}" \
       -pip_echo true \
+      -PipEcho:fdr "${mbr_fdr}" \
       -threads ${task.cpus} \
       -protein_inference aggregation \
       -quantification_method feature_intensity \
@@ -29,7 +35,7 @@ process proteomicslfq {
       -psmFDR 0.01 \
       -proteinFDR 0.01 \
       -picked_proteinFDR true \
-      -out "proteomicslfq.mzTab" \
+      -out proteomicslfq.mzTab \
       -out_cxml proteomicslfq.consensusXML \
       -out_msstats msstats.csv \
       -debug 0

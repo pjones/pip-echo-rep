@@ -1,14 +1,21 @@
+nextflow.enable.types = true
+
 process consensus {
     input:
-    val files
+    record(
+        base: String,
+        msgfplus: Path,
+        comet: Path,
+    )
 
     output:
-    path "${files[0].simpleName}.idXML", emit: idxml
+    file("${base}.idXML")
 
     script:
-    def consensus_file = "${files[0].simpleName}_consensus.idXML"
-    def fdr_file = "${files[0].simpleName}_fdr.idXML"
-    def id_filter_file = "${files[0].simpleName}.idXML"
+    def files = [ msgfplus, comet ]
+    def consensus_file = "${base}_consensus.idXML"
+    def fdr_file = "${base}_fdr.idXML"
+    def id_filter_file = "${base}.idXML"
 
     """
     ConsensusID \

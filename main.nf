@@ -35,9 +35,9 @@ workflow {
     def fdr_ch = channel.fromList(params.fdrs)
 
     mzml_files = toMzML(mzml_ch)
-    flfq = flashlfq(fdr_ch, mzml_files.collect().map { fs -> fs.toSorted() }, fasta)
 
-    // plfq = proteomicslfq(mzml_files, fasta)
+    flfq = flashlfq(fdr_ch, mzml_files.collect().map { fs -> fs.toSorted() }, fasta)
+    plfq = proteomicslfq(fdr_ch, mzml_files, fasta)
 
     publish:
     mzml_files = mzml_files
@@ -48,7 +48,8 @@ workflow {
     flashlfq_after_id = flfq.id_after
     flashlfq_after_quant = flfq.quant_after
 
-    // proteomicslfq_before = plfq
+    proteomicslfq_before_id = plfq.id_before
+    proteomicslfq_before_quant = plfq.quant_before
 }
 
 output {
@@ -76,7 +77,11 @@ output {
         path "${params.dataset}/flashlfq/analyzed"
     }
 
-    // proteomicslfq_before {
-    //     path "${params.dataset}/proteomicslfq/regular"
-    // }
+    proteomicslfq_before_id {
+        path "${params.dataset}/proteomicslfq/original"
+    }
+
+    proteomicslfq_before_quant {
+        path "${params.dataset}/proteomicslfq/original"
+    }
 }
