@@ -10,9 +10,10 @@ process flashlfq {
 
     output:
     record(
-      peaks: file("QuantifiedPeaks.tsv"),
-      peptides: file("QuantifiedPeptides.tsv"),
-      proteins: file("QuantifiedProteins.tsv")
+        mbr_fdr: mbr_fdr,
+        peaks: file("QuantifiedPeaks.tsv"),
+        peptides: file("QuantifiedPeptides.tsv"),
+        proteins: file("QuantifiedProteins.tsv")
     )
 
     script:

@@ -140,7 +140,12 @@ class FlashLFQ:
         # Scaling factor for entrapment calculations, based on the
         # ratio on the number of entrapment peptide sequences and
         # human peptide sequences in the database
-        scaling_factor = 1 + (arabida_count + human_count) / arabida_count
+        #
+        # scaling_factor = (arabida_count + human_count) / (1.0 + arabida_count)
+        #
+        # Using the value from the paper, which uses the count from
+        # the FASTA file, not from the discovered peptides:
+        scaling_factor = 1.0 + 3105275.0 / 3608159.0
 
         if scaling_factor < 1.0 or scaling_factor > 2.0:
             self.log.warning(f"wacky scaling_factor {scaling_factor}, expected 1.86")

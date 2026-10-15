@@ -40,7 +40,9 @@ workflow flashlfq {
 
     emit:
     censored: Value<Record> = censored
+    id_before: Value<Record> = id_before
     quant_before: Value<Record> = quant_before
+    id_after: Value<Record> = id_after
     quant_after: Value<Record> = quant_after
     analyzed: Channel<Path> = analyzed
 }

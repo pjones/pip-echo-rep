@@ -41,7 +41,13 @@ workflow {
 
     publish:
     mzml_files = mzml_files
-    flashlfq = flfq.analyzed
+
+    flashlfq_analyzed = flfq.analyzed
+    flashlfq_before_id = flfq.id_before
+    flashlfq_before_quant = flfq.quant_before
+    flashlfq_after_id = flfq.id_after
+    flashlfq_after_quant = flfq.quant_after
+
     // proteomicslfq_before = plfq
 }
 
@@ -50,8 +56,24 @@ output {
         path "${params.dataset}/mzML"
     }
 
-    flashlfq {
-        path "${params.dataset}/flashlfq"
+    flashlfq_before_id {
+        path "${params.dataset}/flashlfq/original"
+    }
+
+    flashlfq_before_quant {
+        path { quant -> "${params.dataset}/flashlfq/original/fdr-${quant.mbr_fdr}" }
+    }
+
+    flashlfq_after_id {
+        path "${params.dataset}/flashlfq/censored"
+    }
+
+    flashlfq_after_quant {
+        path { quant -> "${params.dataset}/flashlfq/censored/fdr-${quant.mbr_fdr}" }
+    }
+
+    flashlfq_analyzed {
+        path "${params.dataset}/flashlfq/analyzed"
     }
 
     // proteomicslfq_before {

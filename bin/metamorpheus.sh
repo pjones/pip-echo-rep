@@ -30,51 +30,40 @@ function bootstrap() {
   local calibration_task_file=$3
   local search_task_file=$4
 
-  if [ ! -d "$settings_dir" ]; then
-    log "generating MetaMorpheus settings directory"
-    MetaMorpheus --mmsettings "$settings_dir" >/dev/null || :
+  log "generating MetaMorpheus settings directory"
+  MetaMorpheus --mmsettings "$settings_dir" >/dev/null || :
 
-    # Delete all the bullshit:
-    find "$settings_dir" \
-      -regextype posix-extended \
-      -type f \
-      \! -regex '.*\.(txt|tsv|xml|mzMl|dat|fasta|mzML|gdb|pdb)(.gz)?$' \
-      -delete
+  # Delete all the bullshit:
+  find "$settings_dir" \
+    -regextype posix-extended \
+    -type f \
+    \! -regex '.*\.(txt|tsv|xml|mzMl|dat|fasta|mzML|gdb|pdb)(.gz)?$' \
+    -delete
 
-    # Don't prompt:
-    cat <<EOF >"$settings_dir/settings.toml"
+  # Don't prompt:
+  cat <<EOF >"$settings_dir/settings.toml"
 WriteExcelCompatibleTSVs = false
 UserHasAgreedToThermoRawFileReaderLicence = true
 EOF
-  fi
 
-  if [ ! -d "$templates_dir" ]; then
-    log "generating default configuration templates for MetaMorpheus"
-    mkdir --parents "$templates_dir"
+  log "generating default configuration templates for MetaMorpheus"
+  mkdir --parents "$templates_dir"
 
-    pushd "$templates_dir" || exit 1
-    MetaMorpheus --mmsettings "$settings_dir" -g -o .
-    popd || exit 1
-  fi
+  pushd "$templates_dir" || exit 1
+  MetaMorpheus --mmsettings "$settings_dir" -g -o .
+  popd || exit 1
 
-  if [ -n "${calibration_task_file:-}" ] && [ ! -e "$calibration_task_file" ]; then
-    cp "$templates_dir/CalibrationTask.toml" "$calibration_task_file"
-  fi
+  cp "$templates_dir/CalibrationTask.toml" "$calibration_task_file"
 
-  if [ -n "${search_task_file:-}" ] && [ ! -e "$search_task_file" ]; then
-    # Modify some of the default settings to match the paper:
-    #
-    # NOTE: These are the settings that are /different/ than the default
-    # settings.
-    sed -E \
-      -e '/^DoLabelFreeQuantification/s/=.*$/= false/' \
-      -e '/^DoLocalizationAnalysis/s/=.*$/= false/' \
-      -e '/^WriteIndividualFiles/s/=.*$/= false/' \
-      -e '/^QValueThreshold /s/=.*$/= 1.0/' \
-      -e '/^PepQValueThreshold /s/=.*$/= 0.01/' \
-      -e '/^MinAllowedInternalFragmentLength /s/=.*/= 7/' \
-      "$templates_dir/SearchTask.toml" >"$search_task_file"
-  fi
+  # Modify some of the default settings to match the paper:
+  #
+  # NOTE: These are the settings that are /different/ than the default
+  # settings.
+  tomlq --toml-output '
+      .SearchParameters.DoLocalizationAnalysis |= false |
+      .SearchParameters.DoLabelFreeQuantification |= false |
+      .SearchParameters.WriteIndividualFiles |= false
+    ' <"$templates_dir/SearchTask.toml" >"$search_task_file"
 }
 
 ################################################################################

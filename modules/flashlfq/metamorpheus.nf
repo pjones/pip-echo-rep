@@ -7,11 +7,13 @@ process metamorpheus {
 
     output:
     record(
-      t1_psms: file("Task1SearchTask/AllPSMs.psmtsv"),
-      t1_peps: file("Task1SearchTask/AllPeptides.psmtsv"),
-      t2_mzml: files("Task2CalibrationTask/*.mzML"),
-      t3_psms: file("Task3SearchTask/AllPSMs.psmtsv"),
-      t3_peps: file("Task3SearchTask/AllPeptides.psmtsv"),
+        t1_psms: file("Task1SearchTask/AllPSMs.psmtsv"),
+        t1_peps: file("Task1SearchTask/AllPeptides.psmtsv"),
+        t2_mzml: files("Task2CalibrationTask/*.mzML"),
+        t3_psms: file("Task3SearchTask/AllPSMs.psmtsv"),
+        t3_peps: file("Task3SearchTask/AllPeptides.psmtsv"),
+        mm_toml: files("*.toml"),
+        mm_log: file("metamorpheus.log"),
     )
 
     script:

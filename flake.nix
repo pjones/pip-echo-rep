@@ -27,6 +27,7 @@
                   curl
                   jre
                   ruff
+                  jq
                 ])
                 ++ (with inputs.nextflow.packages.${system}; [
                   nextflow
@@ -47,6 +48,7 @@
                       pandas
                       pipe
                       pyopenms
+                      yq # For tomlq (to edit TOML files)
                     ]
                   ))
                 ]);
