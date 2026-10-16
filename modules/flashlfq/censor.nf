@@ -16,6 +16,6 @@ process censor {
 
     script:
     """
-    censor.py --peptides ${t1_peps} --psms ${t1_psms} --mzml ${mzml_files.join(' ')}
+    censor.py --tool flashlfq ${t1_peps} ${t1_psms} ${mzml_files.join(' ')}
     """
 }

@@ -48,8 +48,9 @@ workflow {
     flashlfq_after_id = flfq.id_after
     flashlfq_after_quant = flfq.quant_after
 
-    proteomicslfq_before_id = plfq.id_before
-    proteomicslfq_before_quant = plfq.quant_before
+    proteomicslfq_before = plfq.before
+    proteomicslfq_censored = plfq.censored
+    proteomicslfq_after = plfq.after
 }
 
 output {
@@ -77,11 +78,15 @@ output {
         path "${params.dataset}/flashlfq/analyzed"
     }
 
-    proteomicslfq_before_id {
+    proteomicslfq_before {
         path "${params.dataset}/proteomicslfq/original"
     }
 
-    proteomicslfq_before_quant {
-        path "${params.dataset}/proteomicslfq/original"
+    proteomicslfq_censored {
+        path "${params.dataset}/proteomicslfq/censored"
+    }
+
+    proteomicslfq_after {
+        path "${params.dataset}/proteomicslfq/censored"
     }
 }

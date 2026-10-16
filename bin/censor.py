@@ -40,27 +40,325 @@ import csv
 import functools
 import logging
 import random
+import re
 from pathlib import Path
 
 import pyopenms as oms
-from pipe import chain, groupby, select, take, where
+from pipe import chain, groupby, select, take, traverse, where
+
+
+################################################################################
+class Ident:
+    """
+    A peptide identification with some useful attributes.
+    """
+
+    @classmethod
+    def from_peptide_identification(
+        cls, pep: oms.PeptideIdentification, file_ref=None
+    ) -> "Ident":
+        """
+        Create an Ident object from an OpenMS `PeptideIdentification`.
+        """
+        assert len(pep.getHits()) > 0
+        assert pep.getScoreType() == "q-value"
+
+        hit = pep.getHits()[0]
+        aaseq = hit.getSequence()
+        ident = Ident()
+
+        ident.file_ref = file_ref
+        ident.rt = pep.getRT()  # Seconds
+        ident.sequence = aaseq.toUnmodifiedString()
+        ident.sequence_with_mods = str(aaseq)
+        ident.score = hit.getScore()
+        ident.spectrum_ref = pep.getSpectrumReference()
+        ident.scan = None  # Must use `spectrum_ref`
+        ident.is_target = not hit.isDecoy()
+
+        ident.is_human = any(
+            hit.extractProteinAccessionsSet()
+            | select(lambda s: re.search(r"human", s, re.IGNORECASE))
+        )
+
+        return ident
+
+    def to_row(self):
+        return {
+            "File": self.file_ref,
+            "Full Sequence": self.sequence_with_mods,
+            "Base Sequence": self.sequence,
+            "Score": self.score,
+            "Is Target": self.is_target,
+            "Is Human": self.is_human,
+        }
+
+    def sort_key(self) -> float:
+        """
+        Return the Q-value if this identification is not a decoy.
+        """
+        if self.is_target:
+            return self.score
+        else:
+            return 1.0
+
+    def is_valid(self, max_score: float) -> bool:
+        """Can this identification be used for censoring?"""
+        return (
+            self.score <= max_score
+            and self.is_human
+            #
+            # The paper doesn't mention this but the FlashLFQ censor
+            # script includes this:
+            and not "xidation" in self.sequence_with_mods
+        )
+
+
+################################################################################
+class IdFile:
+    peptides: list[Ident]
+
+    def __init__(self, file: Path):
+        self.id_file = file
+
+    def name(self) -> str:
+        return str(self.id_file.stem)
+
+    def mzml_file_path(self) -> Path:
+        raise RuntimeError("not implemented")
+
+    def duplicates(self, max_seconds: float) -> list[str]:
+        """
+        Return a list of peptide sequences that eluded more than once.
+        """
+
+        def longer_than_max_seconds(group: list[Ident]):
+            rts = list(group | select(lambda p: p.rt))
+
+            min_rt = min(rts)
+            max_rt = max(rts)
+
+            return abs(min_rt - max_rt) > max_seconds
+
+        return list(
+            self.peptides
+            | groupby(lambda pep: pep.sequence)
+            | select(lambda group: [group[0], list(group[1])])
+            | where(lambda group: len(group[1]) > 1)
+            | where(lambda group: longer_than_max_seconds(group[1]))
+            | select(lambda group: group[0])
+        )
 
 
 ################################################################################
 class Censor:
-    def __init__(self, peptide_file, psm_file, mzmls):
-        self.peptide_file = peptide_file
-        self.psm_file = psm_file
+    def __init__(self):
         self.output_dir = Path(".")
-
-        self.mzml_files = {mzml.stem: mzml for mzml in mzmls}
         self.log = logging.getLogger(__name__)
+
+        # When a peptide takes longer than this number of seconds to
+        # elude it is considered to have eluded more than once in the
+        # same run.
+        self.max_rt_seconds = 180  # 3 minutes
 
         self.min_peptides = 100
         self.min_mzml_files = 2
-        self.min_peptide_qval = 0.001
-        self.min_psm_qval = 0.01
+        self.max_peptide_qval = 0.001
+        self.max_psm_qval = 0.01
         self.max_psms_per_file = 500
+
+    def censor(self, files: dict[str, IdFile], peptides: dict[str, list[Ident]]):
+        peptides = self.remove_forbidden_sequences(files, peptides)
+        self.log.info(f"reviewing {len(peptides)} sequences for censoring")
+
+        to_remove_by_file = dict(
+            peptides.values()
+            | select(self.remove_best_ident)
+            | where(lambda ids: len(ids) > 1)
+            | chain
+            | groupby(lambda ident: ident.file_ref)
+            | select(lambda group: [group[0], list(group[1])])
+            | select(lambda group: [group[0], (random.shuffle(group[1]), group[1])[1]])
+            | select(
+                lambda group: [group[0], list(group[1] | take(self.max_psms_per_file))]
+            )
+        )
+
+        for name, file in files.items():
+            mzml_file = file.mzml_file_path()
+
+            if "HeYe" in str(mzml_file):
+                self.log.info(f"skipping HeYe file {name}")
+                link = self.file_to_censored_path(mzml_file)
+                link.symlink_to(mzml_file)
+                continue
+
+            self.log.info(
+                f"replacing {len(to_remove_by_file[name])} spectra from {name}"
+            )
+            self.replace_spectra(mzml_file, to_remove_by_file[name])
+
+        self.dump_censored(
+            list(to_remove_by_file.values() | chain | select(Ident.to_row))
+        )
+
+    def remove_best_ident(self, ids: list[Ident]) -> list[Ident]:
+        """
+        Given a list of identified peptides, return another list with
+        the best scoring peptide removed.
+
+        They are also grouped by their source file and only one
+        peptide for each file is returned (the best scoring one).
+        """
+        by_score = sorted(
+            (
+                ids
+                | groupby(lambda id: id.file_ref)
+                | select(lambda group: sorted(group[1], key=Ident.sort_key))
+                | select(lambda ids: ids[0])
+            ),
+            key=Ident.sort_key,
+        )
+        return by_score[1:]
+
+    def remove_forbidden_sequences(
+        self, files: dict[str, IdFile], peptides: dict[str, list[Ident]]
+    ) -> dict[str, list[Ident]]:
+        """
+        Remove identifications from `peptides` that are listed as
+        forbidden in the paper or the original FlashLFQ censoring
+        script.
+        """
+        #
+        # Peptides that eluded more than once in a single run:
+        #
+        multi_eluders = set(
+            files.values()
+            | select(lambda file: file.duplicates(self.max_rt_seconds))
+            | chain
+        )
+        self.log.info(f"number of multi-eluding sequences: {len(multi_eluders)}")
+
+        #
+        # Peptides that only eluded in a single run:
+        #
+        only_one_file = set(
+            peptides.values()
+            | where(lambda peps: len(peps) <= 1)
+            | select(lambda peps: peps[0].sequence)
+            | chain
+        )
+        self.log.info(f"number of sequences from single runs: {len(only_one_file)}")
+
+        forbidden_sequences = multi_eluders | only_one_file
+        self.log.info(f"number of forbidden sequences: {len(forbidden_sequences)}")
+
+        return dict(
+            list(peptides.items())
+            | where(lambda group: group[0] not in forbidden_sequences)
+        )
+
+    def file_to_censored_path(self, file: Path) -> Path:
+        base = Path(file).stem + "-censored.mzML"
+        return self.output_dir / base
+
+    def replace_spectra(self, file: Path, idents: list[Ident]):
+        """
+        Censor the given mzML file by replacing some of the spectra
+        with a dummy spectrum that only contains a single peak.
+        """
+        output_path = self.file_to_censored_path(file)
+        self.log.info(f"generating censored file file: {output_path}")
+
+        exp = oms.MSExperiment()
+        oms.MzMLFile().load(str(file), exp)
+
+        lookup = oms.SpectrumLookup()
+        lookup.readSpectra(exp)
+
+        spectra = exp.getSpectra()
+
+        for ident in idents:
+            index = None
+
+            if hasattr(ident, "spectrum_ref"):
+                index = lookup.findByNativeID(ident.spectrum_ref)
+            elif hasattr(ident, "scan"):
+                index = ident.scan - 1
+
+            spectra[index].set_peaks([150.0], [10000.0])
+
+        exp.setSpectra(spectra)
+        oms.MzMLFile().store(str(output_path), exp)
+
+    def dump_censored(self, ids: list[Ident]):
+        with open(self.output_dir / "censored.tsv", "w") as file:
+            writer = csv.DictWriter(file, fieldnames=ids[0].keys(), delimiter="\t")
+            writer.writeheader()
+            writer.writerows(ids)
+
+
+################################################################################
+class ProteomicsLFQ(Censor):
+    class IdXmlFile(IdFile):
+        def __init__(self, file: Path):
+            IdFile.__init__(self, file)
+            self.mzml_file = file.parent / (file.stem + ".mzML")
+
+        def mzml_file_path(self) -> Path:
+            return self.mzml_file
+
+        def load(self, max_score: float):
+            _, peptide_ids = oms.IdXMLFile().load(str(self.id_file))
+            to_ident = lambda pep: Ident.from_peptide_identification(pep, self.name())
+
+            self.peptides = list(
+                peptide_ids
+                | select(to_ident)
+                | where(lambda ident: ident.is_valid(max_score))
+            )
+
+            return self
+
+    def __init__(self, input_dir: Path):
+        Censor.__init__(self)
+        self.input_dir = input_dir
+
+    def run(self):
+        self.log.info("censoring spectra for ProteomicsLFQ")
+        self._load_data()
+        return self.censor(self.id_files, self.peptides)
+
+    def _load_data(self):
+        self.id_files = dict(
+            self.input_dir.glob("*.idXML")
+            | select(lambda path: ProteomicsLFQ.IdXmlFile(path))
+            | select(lambda file: [file.name(), file.load(self.max_psm_qval)])
+        )
+
+        self.log.info(f"number of identity files: {len(self.id_files)}")
+        assert len(self.id_files) >= self.min_mzml_files
+
+        self.peptides = dict(
+            self.id_files.values()
+            | select(lambda file: file.peptides)
+            | traverse
+            | groupby(lambda ident: ident.sequence)
+            | select(lambda group: [group[0], list(group[1])])
+        )
+
+        self.log.info(f"number of read peptides: {len(self.peptides)}")
+        assert len(self.peptides) >= self.min_peptides
+
+
+################################################################################
+class FlashLFQ(Censor):
+    def __init__(self, peptide_file, psm_file, mzmls):
+        Censor.__init__(self)
+
+        self.peptide_file = peptide_file
+        self.psm_file = psm_file
+        self.mzml_files = {mzml.stem: mzml for mzml in mzmls}
 
         self.col_rt = "Scan Retention Time"
         self.col_seq = "Full Sequence"
@@ -75,7 +373,7 @@ class Censor:
     def _load_peptides(self):
         self.log.info("reading peptides")
         self.parsed_peptides = self._read_psmtsv_file(
-            self.peptide_file, self.min_peptide_qval
+            self.peptide_file, self.max_peptide_qval
         )
         self.all_peptide_seqs = {row[self.col_seq] for row in self.parsed_peptides}
         self.peptides_by_file = dict(
@@ -104,7 +402,7 @@ class Censor:
 
     def _load_psms(self):
         self.log.info("reading PSMs")
-        self.parsed_psms = self._read_psmtsv_file(self.psm_file, self.min_psm_qval)
+        self.parsed_psms = self._read_psmtsv_file(self.psm_file, self.max_psm_qval)
         self.log.info(f"number of PSMs that passed filtering: {len(self.parsed_psms)}")
 
         self.psms_by_file = dict(
@@ -243,19 +541,30 @@ class Censor:
 
 ################################################################################
 if __name__ == "__main__":
+    logopts = {
+        "format": "[%(asctime)s %(levelname)s]: %(message)s",
+        "datefmt": "%Y-%m-%dT%H:%M:%S",
+        "level": logging.DEBUG,
+    }
+
     parser = argparse.ArgumentParser(
         prog="censor.py",
-        description="Censor mzML files for FlashLFQ",
+        description="Censor mzML files",
     )
 
     # https://docs.python.org/3/library/argparse.html
-    parser.add_argument("--peptides")
-    parser.add_argument("--psms")
-    parser.add_argument("--mzml", action="extend", nargs="+", type=Path)
+    parser.add_argument("--tool", required=True, choices=["flashlfq", "proteomicslfq"])
+    parser.add_argument("files", action="extend", nargs="+", type=Path)
 
     args = parser.parse_args()
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(**logopts)
 
-    censor = Censor(args.peptides, args.psms, args.mzml)
-    censor.min_peptide_qval = 0.01  # FIXME
+    censor = None
+
+    if args.tool == "flashlfq":
+        censor = FlashLFQ(args.files[0], args.files[1], args.files[2:])
+        censor.max_peptide_qval = 0.01  # FIXME
+    elif args.tool == "proteomicslfq":
+        censor = ProteomicsLFQ(*args.files)
+
     censor.run()
