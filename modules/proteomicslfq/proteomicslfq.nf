@@ -15,12 +15,13 @@ process proteomicslfq {
     )
 
     script:
+    def pip_echo_enabled = mbr_fdr < 1.0 ? "true" : "false"
     """
     ProteomicsLFQ \
       -in ${mzml_files.join(' ')} \
       -ids ${idxml_files.join(' ')} \
       -fasta "${fasta_file}" \
-      -pip_echo true \
+      -pip_echo ${pip_echo_enabled} \
       -PipEcho:fdr "${mbr_fdr}" \
       -threads ${task.cpus} \
       -protein_inference aggregation \

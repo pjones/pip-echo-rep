@@ -5,7 +5,12 @@ include { flashlfq } from "./modules/flashlfq/main.nf"
 include { proteomicslfq } from "./modules/proteomicslfq/main.nf"
 
 params {
-    fdrs: List<Float> = [ 0.01, 0.025, 0.5 ]
+    fdrs: List<Float> = [
+        0.01,
+        0.025,
+        0.05,
+        1.0, // MBR FDR disabled
+    ]
 
     dataset: String = "PXD037527"
     data_dir: Path = file("data")
@@ -36,7 +41,10 @@ workflow {
 
     mzml_files = toMzML(mzml_ch)
 
-    flfq = flashlfq(fdr_ch, mzml_files.collect().map { fs -> fs.toSorted() }, fasta)
+    // MBR FDR cannot be disabled in FlashLFQ:
+    def flash_fdr = fdr_ch.filter { fdr -> fdr < 1.0 }
+
+    flfq = flashlfq(flash_fdr, mzml_files.collect().map { fs -> fs.toSorted() }, fasta)
     plfq = proteomicslfq(fdr_ch, mzml_files, fasta)
 
     publish:
