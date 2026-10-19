@@ -9,6 +9,7 @@ process proteomicslfq {
 
     output:
     record(
+        mbr_fdr: mbr_fdr,
         mztab: file("proteomicslfq.mzTab"),
         consensus: file("proteomicslfq.consensusXML"),
         msstats: file("msstats.csv"),

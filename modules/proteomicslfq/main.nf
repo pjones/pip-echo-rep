@@ -19,12 +19,15 @@ workflow proteomicslfq {
     before = id_quant_before(mbr_fdr, fasta, mzml_files)
 
     censored = censor(before.id)
+    censored_tsv = censored.map {r -> r.censored}
     censored_mzml = censored.flatMap {r -> r.mzml}
 
     after = id_quant_after(mbr_fdr, fasta, censored_mzml)
 
     emit:
-    before = before
-    censored = censored
-    after = after
+    before_id = before.id
+    before_quant = before.quant
+    censored = censored_tsv
+    after_id = after.id
+    after_quant = after.quant
 }
