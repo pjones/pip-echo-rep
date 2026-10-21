@@ -6,16 +6,18 @@ process comet {
     fasta_file: Path
 
     output:
-    record(
-        base: mzml_file.simpleName,
-        idxml: file("${mzml_file.simpleName}_comet.idXML")
-    )
+    file("${mzml_file.simpleName}.idXML")
 
     script:
+    def base = mzml_file.simpleName
+    def comet_file = "${base}_comet.idXML"
+    def fdr_file = "${base}_fdr.idXML"
+    def id_filter_file = "${base}.idXML"
+
     """
     CometAdapter \
       -in "${mzml_file}" \
-      -out "${mzml_file.simpleName}_comet.idXML" \
+      -out "${comet_file}" \
       -threads ${task.cpus} \
       -database "${fasta_file}" \
       -instrument low_res \
@@ -39,5 +41,35 @@ process comet {
       -PeptideIndexing:unmatched_action warn \
       -debug 0 \
       -force
+
+    PSMFeatureExtractor \
+      -in "${comet_file}" \
+      -out "${base}_feature.idXML" \
+      -threads ${task.cpus} \
+      -debug 0
+
+    PercolatorAdapter \
+      -in "${base}_feature.idXML" \
+      -out "${base}_percolator.idXML" \
+      -threads ${task.cpus} \
+      -subset_max_train 300000 \
+      -decoy_pattern "DECOY_" \
+      -post_processing_tdc \
+      -score_type pep \
+      -debug 0
+
+    FalseDiscoveryRate \
+      -in "${base}_percolator.idXML" \
+      -out "${fdr_file}" \
+      -threads ${task.cpus} \
+      -algorithm:add_decoy_peptides \
+      -algorithm:add_decoy_proteins \
+      -PSM true -protein false
+
+    IDFilter \
+      -in "${fdr_file}" \
+      -out "${id_filter_file}" \
+      -threads ${task.cpus} \
+      -score:psm "0.10"
     """
 }

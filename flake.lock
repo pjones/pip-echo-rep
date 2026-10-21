@@ -135,11 +135,11 @@
     },
     "nixpkgs_3": {
       "locked": {
-        "lastModified": 1781607440,
-        "narHash": "sha256-rxO+uc/KFbSJp+pgyXRuAX6QlG9hJdnt0BXpEQRXY+U=",
+        "lastModified": 1791161550,
+        "narHash": "sha256-hUcT0jKmSHN5XgRW3sSEIIlqsVClkVfToluYtOd56ok=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "3e41b24abd260e8f71dbe2f5737d24122f972158",
+        "rev": "8c6b39505383e6d5dcb431f00cb3597b71f8045c",
         "type": "github"
       },
       "original": {
@@ -149,14 +149,14 @@
         "type": "github"
       }
     },
-    "openms": {
+    "openms-dev": {
       "flake": false,
       "locked": {
-        "lastModified": 1787913131,
-        "narHash": "sha256-Q9XY3m1ttlbrDKnSV6FH9KnEA8uMsW0P0NvRat0T5HU=",
+        "lastModified": 1792584750,
+        "narHash": "sha256-36q8vVQgmSWPPy8G0YbttDlLBVK5QR/eA21PD96MtQw=",
         "owner": "OpenMS",
         "repo": "OpenMS",
-        "rev": "700d16bc9dd82a86a76e4116a4ae7e70d061b79e",
+        "rev": "c5fbe875bf8f67cab17fb175f47e68819eee8548",
         "type": "github"
       },
       "original": {
@@ -168,19 +168,19 @@
     "proteomics": {
       "inputs": {
         "nixpkgs": "nixpkgs_3",
-        "openms": "openms"
+        "openms-dev": "openms-dev"
       },
       "locked": {
-        "lastModified": 1787920594,
-        "narHash": "sha256-SOofPVajdPCvrLNxkqU/vX1x48RjJC66vl7qzvTQeSA=",
+        "lastModified": 1792587282,
+        "narHash": "sha256-plXgBt3NUhk1Hgbal/LPgpCLE+DIjPvdFQLThpLekZ8=",
         "owner": "pjones",
         "repo": "proteomics.nix",
-        "rev": "15ed5503fe6458f176d2639667d3d2b775cbc509",
+        "rev": "a827aaa029bb21af0ea98df6a07db4549a09f120",
         "type": "github"
       },
       "original": {
         "owner": "pjones",
-        "ref": "openms-next",
+        "ref": "openms-3.7",
         "repo": "proteomics.nix",
         "type": "github"
       }

@@ -1,14 +1,7 @@
 nextflow.enable.types = true
 
-include { msgfplus } from "./msgfplus.nf"
 include { comet } from "./comet.nf"
-include { consensus } from "./consensus.nf"
 include { proteomicslfq as lfq } from "./proteomicslfq.nf"
-
-include {
-    features as msgfplus_features ;
-    features as comet_features
-} from "./features.nf"
 
 // Emit the files stored in channel as a sorted list.
 def as_sorted_files(ch) {
@@ -22,28 +15,16 @@ workflow id_quant {
     mzml_files: Channel<Path>
 
     main:
-    msgf_id = msgfplus(mzml_files, fasta)
-    msgf_feat = msgfplus_features(msgf_id)
-
-    comet_id = comet(mzml_files, fasta)
-    comet_feat = comet_features(comet_id)
-
-    def id_files_ch =
-        msgf_feat
-        .map { r -> record(base: r.base, msgfplus: r.percolator) }
-        .join(comet_feat.map { r -> record(base: r.base, comet: r.percolator) }, by: "base")
-
-    consensus_id = consensus(id_files_ch)
-    id = as_sorted_files(mzml_files.mix(consensus_id))
+    id_files = comet(mzml_files, fasta)
 
     quant = lfq(
         mbr_fdr,
+        fasta,
         as_sorted_files(mzml_files),
-        as_sorted_files(consensus_id),
-        fasta
+        as_sorted_files(id_files)
     )
 
     emit:
-    id: Value<List<Path>> = id
+    id: Value<List<Path>> = as_sorted_files(mzml_files.mix(id_files))
     quant: Channel<Record> = quant
 }

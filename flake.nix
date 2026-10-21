@@ -1,7 +1,7 @@
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    proteomics.url = "github:pjones/proteomics.nix/openms-next";
+    proteomics.url = "github:pjones/proteomics.nix/openms-3.7";
     nextflow.url = "github:pjones/nextflow.nix";
     flake-parts.url = "github:hercules-ci/flake-parts";
   };

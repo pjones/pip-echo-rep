@@ -3,9 +3,9 @@ nextflow.enable.types = true
 process proteomicslfq {
     input:
     mbr_fdr: Float
+    fasta_file: Path
     mzml_files: List<Path>
     idxml_files: List<Path>
-    fasta_file: Path
 
     output:
     record(
