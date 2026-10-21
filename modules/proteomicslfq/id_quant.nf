@@ -17,8 +17,8 @@ def as_sorted_files(ch) {
 
 workflow id_quant {
     take:
-    mbr_fdr: Float
-    fasta: Path
+    mbr_fdr: Channel<Float>
+    fasta: Value<Path>
     mzml_files: Channel<Path>
 
     main:

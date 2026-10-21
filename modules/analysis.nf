@@ -5,9 +5,11 @@ process analysis {
     tool_name: String
     data_dir: Path
     censored_manifest: Path
-    orig_path: Path
-    censored_path: Path
-    mbr_fdr: Float
+    record(
+        orig_path: Path,
+        censored_path: Path,
+        mbr_fdr: Float,
+    )
 
     output:
     record(

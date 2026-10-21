@@ -10,7 +10,7 @@ include {
 
 workflow proteomicslfq {
     take:
-    mbr_fdr: Float
+    mbr_fdr: Channel<Float>
     mzml_files: Channel<Path>
     fasta_files: List<Path>
 

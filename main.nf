@@ -32,6 +32,7 @@ workflow {
     def fasta = file("data/${params.dataset}/fasta.csv")
         .readLines()
         .collect { line -> mzml_dir.resolve(line) }
+        .toSorted()
 
     def mzml_ch = channel.fromPath("${spectra}")
         .flatMap { csv -> csv.splitCsv(header: ["file"], skip: 0) }
@@ -44,8 +45,19 @@ workflow {
     // MBR FDR cannot be disabled in FlashLFQ:
     def flash_fdr = fdr_ch.filter { fdr -> fdr < 1.0 }
 
-    flfq = flashlfq(flash_fdr, mzml_files.collect().map { fs -> fs.toSorted() }, fasta)
-    plfq = proteomicslfq(fdr_ch, mzml_files, fasta)
+    // FlashLFQ
+    flfq = flashlfq(
+        flash_fdr,
+        mzml_files.collect().map { fs -> fs.toSorted() },
+        fasta
+    )
+
+    // ProteomicsLFQ
+    plfq = proteomicslfq(
+        fdr_ch,
+        mzml_files,
+        fasta
+    )
 
     publish:
     mzml_files = mzml_files

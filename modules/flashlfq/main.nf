@@ -15,8 +15,8 @@ include { analysis } from "../analysis.nf"
 
 workflow flashlfq {
     take:
-    mbr_fdr: Float
-    mzml_files: List<Path>
+    mbr_fdr: Channel<Float>
+    mzml_files: Value<List<Path>>
     fasta_files: List<Path>
 
     main:
@@ -29,20 +29,22 @@ workflow flashlfq {
     id_after = mm_after(censored_mzml, fasta_files)
     quant_after = lfq_after(mbr_fdr, id_after)
 
+    def data = quant_before
+        .map { r -> record(mbr_fdr: r.mbr_fdr, orig_path: r.peaks.parent) }
+        .join(quant_after.map { r -> record(mbr_fdr: r.mbr_fdr, censored_path: r.peaks.parent)}, by: "mbr_fdr")
+
     analyzed = analysis(
         "flashlfq",
         params.data_dir,
         censored.map { r -> r.psms },
-        quant_before.map { r -> r.peaks.parent },
-        quant_after.map { r -> r.peaks.parent },
-        mbr_fdr
+        data
     )
 
     emit:
     censored: Value<Record> = censored
     id_before: Value<Record> = id_before
-    quant_before: Value<Record> = quant_before
+    quant_before: Channel<Record> = quant_before
     id_after: Value<Record> = id_after
-    quant_after: Value<Record> = quant_after
-    analyzed: Channel<Path> = analyzed
+    quant_after: Channel<Record> = quant_after
+    analyzed: Channel<Record> = analyzed
 }
