@@ -81,6 +81,10 @@ class Ident:
             | select(lambda s: re.search(r"human", s, re.IGNORECASE))
         )
 
+        ident.precursor_mass = (
+            pep.getMZ() * hit.getCharge() - hit.getCharge() * 1.007276466771
+        )
+
         return ident
 
     def to_row(self):
@@ -171,17 +175,29 @@ class Censor:
         peptides = self.remove_forbidden_sequences(files, peptides)
         self.log.info(f"reviewing {len(peptides)} sequences for censoring")
 
+        def by_precursor(ids: [Ident]) -> [Ident]:
+            """
+            `ids` should be a list of peptides from the same file.
+            Limits the results to one peptide per precursor.
+            """
+            return (
+                ids  # [id]
+                | groupby(lambda id: round(id.precursor_mass, 2))  # [[mass, [id]]]
+                | select(lambda group: min(group[1], key=Ident.sort_key))  # [id]
+            )
+
+        def limit(ids: [Ident]) -> [Ident]:
+            return list(ids | take(self.max_psms_per_file))
+
         to_remove_by_file = dict(
             peptides.values()
             | select(self.remove_best_ident)
-            | where(lambda ids: len(ids) > 1)
+            | where(lambda ids: len(ids) > 0)
             | chain
             | groupby(lambda ident: ident.file_ref)
-            | select(lambda group: [group[0], list(group[1])])
+            | select(lambda group: [group[0], list(by_precursor(group[1]))])
             | select(lambda group: [group[0], (random.shuffle(group[1]), group[1])[1]])
-            | select(
-                lambda group: [group[0], list(group[1] | take(self.max_psms_per_file))]
-            )
+            | select(lambda group: [group[0], limit(group[1])])
         )
 
         for name, file in files.items():
@@ -204,22 +220,22 @@ class Censor:
 
     def remove_best_ident(self, ids: list[Ident]) -> list[Ident]:
         """
-        Given a list of identified peptides, return another list with
-        the best scoring peptide removed.
+        Given a list of peptides that all have the same amino acid
+        sequence, return list of peptides from the original list that
+        can be censored.
 
-        They are also grouped by their source file and only one
-        peptide for each file is returned (the best scoring one).
+        The peptides will be grouped by the mzML file from which they
+        originated and the best scoring peptide for each group will be
+        removed from the return list to ensure it can be used by the
+        quantification process in MBR.
         """
-        by_score = sorted(
-            (
-                ids
-                | groupby(lambda id: id.file_ref)
-                | select(lambda group: sorted(group[1], key=Ident.sort_key))
-                | select(lambda ids: ids[0])
-            ),
-            key=Ident.sort_key,
+        return list(
+            ids  # [id]
+            | groupby(lambda id: id.file_ref)  # [[file, [id]]]
+            | select(lambda group: sorted(group[1], key=Ident.sort_key))  # [[id]]
+            | select(lambda ids: ids[1:])  # [[id]] (remove the best)
+            | traverse  # [id]
         )
-        return by_score[1:]
 
     def remove_forbidden_sequences(
         self, files: dict[str, IdFile], peptides: dict[str, list[Ident]]
