@@ -53,49 +53,11 @@ class Ident:
     A peptide identification with some useful attributes.
     """
 
-    @classmethod
-    def from_peptide_identification(
-        cls, pep: oms.PeptideIdentification, file_ref=None
-    ) -> "Ident":
+    def to_row(self) -> dict[str, str]:
         """
-        Create an Ident object from an OpenMS `PeptideIdentification`.
+        Return a dictionary for inserting into the manifest file.
         """
-        assert len(pep.getHits()) > 0
-        assert pep.getScoreType() == "q-value"
-
-        hit = pep.getHits()[0]
-        aaseq = hit.getSequence()
-        ident = Ident()
-
-        ident.file_ref = file_ref
-        ident.rt = pep.getRT()  # Seconds
-        ident.sequence = aaseq.toUnmodifiedString()
-        ident.sequence_with_mods = str(aaseq)
-        ident.score = hit.getScore()
-        ident.spectrum_ref = pep.getSpectrumReference()
-        ident.scan = None  # Must use `spectrum_ref`
-        ident.is_target = not hit.isDecoy()
-
-        ident.is_human = any(
-            hit.extractProteinAccessionsSet()
-            | select(lambda s: re.search(r"human", s, re.IGNORECASE))
-        )
-
-        ident.precursor_mass = (
-            pep.getMZ() * hit.getCharge() - hit.getCharge() * 1.007276466771
-        )
-
-        return ident
-
-    def to_row(self):
-        return {
-            "File": self.file_ref,
-            "Full Sequence": self.sequence_with_mods,
-            "Base Sequence": self.sequence,
-            "Score": self.score,
-            "Is Target": self.is_target,
-            "Is Human": self.is_human,
-        }
+        raise RuntimeError("not implemented")
 
     def sort_key(self) -> float:
         """
@@ -158,6 +120,7 @@ class IdFile:
 class Censor:
     def __init__(self):
         self.output_dir = Path(".")
+        self.manifest_file = "censored.tsv"
         self.log = logging.getLogger(__name__)
 
         # When a peptide takes longer than this number of seconds to
@@ -183,7 +146,9 @@ class Censor:
             return (
                 ids  # [id]
                 | groupby(lambda id: round(id.precursor_mass, 2))  # [[mass, [id]]]
-                | select(lambda group: min(group[1], key=Ident.sort_key))  # [id]
+                | select(
+                    lambda group: min(group[1], key=lambda id: id.sort_key())
+                )  # [id]
             )
 
         def limit(ids: [Ident]) -> [Ident]:
@@ -215,7 +180,7 @@ class Censor:
             self.replace_spectra(mzml_file, to_remove_by_file[name])
 
         self.dump_censored(
-            list(to_remove_by_file.values() | chain | select(Ident.to_row))
+            list(to_remove_by_file.values() | chain | select(lambda id: id.to_row()))
         )
 
     def remove_best_ident(self, ids: list[Ident]) -> list[Ident]:
@@ -232,7 +197,9 @@ class Censor:
         return list(
             ids  # [id]
             | groupby(lambda id: id.file_ref)  # [[file, [id]]]
-            | select(lambda group: sorted(group[1], key=Ident.sort_key))  # [[id]]
+            | select(
+                lambda group: sorted(group[1], key=lambda id: id.sort_key())
+            )  # [[id]]
             | select(lambda ids: ids[1:])  # [[id]] (remove the best)
             | traverse  # [id]
         )
@@ -307,8 +274,8 @@ class Censor:
         exp.setSpectra(spectra)
         oms.MzMLFile().store(str(output_path), exp)
 
-    def dump_censored(self, ids: list[Ident]):
-        with open(self.output_dir / "censored.tsv", "w") as file:
+    def dump_censored(self, ids: list[dict[str, str]]):
+        with open(self.output_dir / self.manifest_file, "w") as file:
             writer = csv.DictWriter(file, fieldnames=ids[0].keys(), delimiter="\t")
             writer.writeheader()
             writer.writerows(ids)
@@ -316,6 +283,47 @@ class Censor:
 
 ################################################################################
 class ProteomicsLFQ(Censor):
+    class PepId(Ident):
+        def __init__(self, pep: oms.PeptideIdentification, file_ref=None):
+            """
+            Create an Ident object from an OpenMS `PeptideIdentification`.
+            """
+            Ident.__init__(self)
+
+            assert len(pep.getHits()) > 0
+            assert pep.getScoreType() == "q-value"
+
+            hit = pep.getHits()[0]
+            aaseq = hit.getSequence()
+
+            self.file_ref = file_ref
+            self.rt = pep.getRT()  # Seconds
+            self.sequence = aaseq.toUnmodifiedString()
+            self.sequence_with_mods = str(aaseq)
+            self.score = hit.getScore()
+            self.spectrum_ref = pep.getSpectrumReference()
+            self.scan = None  # Must use `spectrum_ref`
+            self.is_target = not hit.isDecoy()
+
+            self.is_human = any(
+                hit.extractProteinAccessionsSet()
+                | select(lambda s: re.search(r"human", s, re.IGNORECASE))
+            )
+
+            self.precursor_mass = (
+                pep.getMZ() * hit.getCharge() - hit.getCharge() * 1.007276466771
+            )
+
+        def to_row(self):
+            return {
+                "File": self.file_ref,
+                "Full Sequence": self.sequence_with_mods,
+                "Base Sequence": self.sequence,
+                "Score": self.score,
+                "Is Target": self.is_target,
+                "Is Human": self.is_human,
+            }
+
     class IdXmlFile(IdFile):
         def __init__(self, file: Path):
             IdFile.__init__(self, file)
@@ -326,7 +334,7 @@ class ProteomicsLFQ(Censor):
 
         def load(self, max_score: float):
             _, peptide_ids = oms.IdXMLFile().load(str(self.id_file))
-            to_ident = lambda pep: Ident.from_peptide_identification(pep, self.name())
+            to_ident = lambda pep: ProteomicsLFQ.PepId(pep, self.name())
 
             self.peptides = list(
                 peptide_ids
