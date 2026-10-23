@@ -13,15 +13,17 @@ process analysis {
 
     output:
     record(
-        json: file("analysis-${mbr_fdr}.json"),
-        log: file("analysis-${mbr_fdr}.log"),
+        mbr_fdr: mbr_fdr,
+        json: file("analysis.json"),
+        log: file("analysis.log"),
+        csv: files("*.csv"),
     )
 
     script:
     """
     analysis.py \
-        --output "analysis-${mbr_fdr}.json" \
-        --log "analysis-${mbr_fdr}.log" \
+        --output "analysis.json" \
+        --log "analysis.log" \
         --tool "${tool_name}" \
         --id "${params.dataset}" \
         --qval "${mbr_fdr}" \

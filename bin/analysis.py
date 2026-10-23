@@ -8,6 +8,8 @@ import re
 from pathlib import Path
 
 import pandas as pd
+import pyopenms as oms
+from pipe import select, where
 
 
 ################################################################################
@@ -30,9 +32,20 @@ class DataHelper:
 
         # These need to be configured from the outside depending on
         # the data set:
+        self.tool = None
         self.human_file_pattern = None
         self.foreign_species = None
         self.q_value = None
+
+        # Max RT (in minutes) that two peptide identifications are
+        # allowed to be.  Exceeding this threshold means the features
+        # were linked by mistake.
+        #
+        # Each dataset has its own number:
+        #
+        # - 54s (Lim et al.)
+        # - 36s (E. coli)
+        # - 24s (Single-cell)
         self.rt_delta = None
 
     def path(self, file):
@@ -52,64 +65,65 @@ class DataHelper:
 
 ################################################################################
 # Adapted from: https://github.com/Alexander-Sol/PIP-ECHOanalysis.git
-class FlashLFQ:
+class Analysis:
     def __init__(self, data: DataHelper):
         self.data = data
         self.log = logging.getLogger(__name__)
+        self.on = ["File Name", "Full Sequence"]
 
-    def run(self):
-        self.log.info("analyzing output from FlashLFQ")
-        stats = self._fdp()
-        self.log.info(json.dumps(stats, indent=2))
-        return stats
+    def run(self, original, censored, manifest):
+        mbr_original = len(original[original["Peak Detection Type"] == "MBR"].index)
+        mbr_censored = len(censored[censored["Peak Detection Type"] == "MBR"].index)
 
-    def _fdp(self):
-        peaks = self._load_peaks(self.data.orig_path)
+        json = self.fdp(original, censored, manifest)
+
+        json["mbr_original"] = mbr_original
+        json["mbr_censored"] = mbr_censored
+
+        return json
+
+    def fdp(self, original, censored, manifest):
         entrapment_seqs = self.data.entrapment_seqs()
 
-        # Limit to the human mzML files:
-        peaks = peaks.loc[peaks["File Name"].str.contains(self.data.human_file_pattern)]
-
-        msms_detected_foreign_peaks = peaks.loc[
-            (peaks["Peak Detection Type"] == "MSMS")
-            & (peaks["Organism"].str.contains(self.data.foreign_species, na=False))
+        # Limit to human files.
+        original = original.loc[
+            original[self.on[0]].str.contains(self.data.human_file_pattern)
         ]
 
+        msms_detected_foreign_peaks = original.loc[
+            (original["Peak Detection Type"] == "MSMS")
+            & (original["Organism"].str.contains(self.data.foreign_species, na=False))
+        ]
         msms_detected_foreign_peaks = msms_detected_foreign_peaks.drop_duplicates(
-            subset=["Full Sequence"], keep="first"
+            subset=[self.on[1]], keep="first"
         )
+        msms_foreign_seqs = msms_detected_foreign_peaks[self.on[1]].tolist()
 
-        msms_foreign_seqs = msms_detected_foreign_peaks["Full Sequence"].tolist()
-
-        msms_peaks = peaks.loc[
-            (peaks["Peak Detection Type"] == "MSMS")
-            & (peaks["Decoy Peptide"] == False)
+        msms_peaks = original.loc[
+            (original["Peak Detection Type"] == "MSMS")
+            & (original["Decoy Peptide"] == False)
             & (
-                (peaks["Organism"].str.contains(self.data.foreign_species, na=False))
-                | (peaks["Organism"].str.contains("Homo sapiens", na=False))
-                | (peaks["Organism"].str.contains("Arabidopsis", na=False))
+                (original["Organism"].str.contains(self.data.foreign_species, na=False))
+                | (original["Organism"].str.contains("Homo sapiens", na=False))
+                | (original["Organism"].str.contains("HUMAN", na=False))
+                | (original["Organism"].str.contains("Arabidopsis", na=False))
             )
         ]
 
         msms_count = msms_peaks.shape[0]
 
-        peaks = peaks.loc[
-            (peaks["Peak Detection Type"] == "MBR")
-            & (peaks["PIP Q-Value"] < self.data.q_value)
-            & (peaks["Decoy Peptide"] == False)
+        mbr_peaks = original.loc[
+            (original["Peak Detection Type"] == "MBR")
+            & (original["PIP Q-Value"] <= self.data.q_value)
+            & (original["Decoy Peptide"] == False)
+            & (original["Random RT"] == False)
         ]
 
-        peaks = peaks.loc[
-            (peaks["Random RT"] == False) & (peaks["Decoy Peptide"] == False)
+        human_peaks = mbr_peaks.loc[
+            (mbr_peaks["Organism"].str.contains("Homo sapiens", na=False))
+            | (mbr_peaks["Organism"].str.contains("HUMAN", na=False))
         ]
 
-        human_peaks = peaks.loc[
-            peaks["Organism"].str.contains("Homo sapiens", na=False)
-        ]
-
-        # Our entrapment database has a bunch of scrambled sequences
-        # appended to the end of the DB, which is why we're checking
-        # for them
         entrapment_peaks = human_peaks.loc[
             human_peaks["Full Sequence"].isin(entrapment_seqs)
         ]
@@ -121,21 +135,20 @@ class FlashLFQ:
         human_count = human_peaks.shape[0]
         arabida_count = entrapment_peaks.shape[0]
 
-        foreign_peaks = peaks.loc[
-            peaks["Organism"].str.contains(self.data.foreign_species, na=False)
+        foreign_peaks = mbr_peaks.loc[
+            mbr_peaks["Organism"].str.contains(self.data.foreign_species, na=False)
         ]
         foreign_peaks = foreign_peaks.loc[
-            ~foreign_peaks["Organism"].str.contains("Homo sapiens", na=True)
+            ~(
+                (foreign_peaks["Organism"].str.contains("Homo sapiens", na=True))
+                | (foreign_peaks["Organism"].str.contains("HUMAN", na=True))
+            )
         ]
         foreign_count = foreign_peaks.shape[0]
 
-        msms_foreign_count = sum(foreign_peaks["Full Sequence"].isin(msms_foreign_seqs))
+        msms_foreign_count = sum(foreign_peaks[self.on[1]].isin(msms_foreign_seqs))
         foreign_count = foreign_count - msms_foreign_count
-
-        score_threshold = peaks["PIP PEP"].max()
-
-        # calculate the error rate for (presumably) native human transfers
-        nper_results = self._get_native_peak_error_rate(score_threshold)
+        nper_results = self.native_error(original, censored, manifest)
 
         # Scaling factor for entrapment calculations, based on the
         # ratio on the number of entrapment peptide sequences and
@@ -146,10 +159,6 @@ class FlashLFQ:
         # Using the value from the paper, which uses the count from
         # the FASTA file, not from the discovered peptides:
         scaling_factor = 1.0 + 3105275.0 / 3608159.0
-
-        if scaling_factor < 1.0 or scaling_factor > 2.0:
-            self.log.warning(f"wacky scaling_factor {scaling_factor}, expected 1.86")
-
         scaled_arabida = arabida_count * scaling_factor
         scaled_nper = human_count * nper_results["error_rate"]
 
@@ -163,9 +172,11 @@ class FlashLFQ:
         false_discovery_proportion = fper + nper + fder
 
         return {
-            "tool": "flashlfq",
+            "tool": self.data.tool,
             "dataset": self.data.dataset_name,
             "q_value": self.data.q_value,
+            "max_rt_delta_min": self.data.rt_delta,
+            "max_rt_delta_sec": self.data.rt_delta * 60.0,
             "human": human_count,
             "foreign": foreign_count,
             "arabida": arabida_count,
@@ -175,106 +186,228 @@ class FlashLFQ:
             "scaled_arabida": scaled_arabida,
             "scaled_nper": scaled_nper,
             "sensitivity": nper_results["sensitivity"],
+            "error_rate": nper_results["error_rate"],
             "fper": fper,
             "nper": nper,
             "fder": fder,
             "false_discovery_proportion": false_discovery_proportion,
-            "nper_results": nper_results,
         }
 
-    def _get_native_peak_error_rate(self, score_threshold):
-        original_peaks = self._load_peaks(self.data.orig_path)
-        original_peaks = original_peaks[original_peaks["Peak RT Apex"] != "-"]
-        self.log.info(f"original_peaks.shape = {original_peaks.shape}")
+    def native_error(self, original, censored, manifest):
+        removed = pd.merge(original, manifest, on=self.on)
+        removed = removed[[self.on[0], self.on[1], "RT"]]
+        removed.to_csv("removed_df.csv")
 
-        censored_psms = self._load_censored_psms()
-        self.log.info(f"censored_psms.shape = {censored_psms.shape}")
-
-        censored_peaks = pd.merge(
-            censored_psms,
-            original_peaks,
-            on=["File Name", "Full Sequence"],
-        )
-        self.log.info(f"censored_peaks.shape = {censored_peaks.shape}")
-
-        censored_peaks = censored_peaks[
-            [
-                "File Name",
-                "Full Sequence",
-                "Peak RT Start",
-                "Peak RT Apex",
-                "Peak RT End",
-                "Peak Charge",
-                "Peak intensity",
-            ]
+        censored_mbr = censored.loc[
+            (censored["Peak Detection Type"] == "MBR")
+            & (censored["Decoy Peptide"] == False)
+            & (censored["PIP Q-Value"] <= self.data.q_value)
         ]
 
-        new_peaks = self._load_peaks(self.data.censored_path)
-        new_peaks = new_peaks.loc[
-            (new_peaks["Peak Detection Type"] == "MBR")
-            & (new_peaks["Random RT"] == False)
-            & (new_peaks["Decoy Peptide"] == False)
-        ]
+        new = pd.merge(censored_mbr, removed, on=self.on)
+        new["RT_d"] = new.apply(lambda row: abs(row["RT_x"] - row["RT_y"]), axis=1)
+        new["Agreement"] = new.apply(lambda r: r["RT_d"] <= self.data.rt_delta, axis=1)
+        new.sort_values(by="Agreement", ascending=False, inplace=True)
+        new.to_csv("new_df_pre.csv")
 
-        new_peaks = new_peaks.loc[(new_peaks["PIP Q-Value"] < self.data.q_value)]
-        new_peaks = new_peaks[
-            [
-                "File Name",
-                "Full Sequence",
-                "Peak RT Start",
-                "Peak RT Apex",
-                "Peak RT End",
-                "Peak Charge",
-                "Peak intensity",
-                "PIP PEP",
-                "PIP Q-Value",
-            ]
-        ]
+        # FIXME: why isn't there more overlap?
+        self.log.info(f"original peptides: {original.shape}")
+        self.log.info(f"manifest peptides: {manifest.shape}")
+        self.log.info(f" removed peptides: {removed.shape}")
+        self.log.info(f"     new peptides: {new.shape}")
 
-        peak_join = pd.merge(
-            censored_peaks,
-            new_peaks,
-            on=["File Name", "Full Sequence"],
+        new = new.drop_duplicates(subset=self.on, keep="first")
+        manifest = manifest.drop_duplicates(subset=self.on, keep="first")
+
+        new.sort_values(by="PIP Q-Value", ascending=True, inplace=True)
+        new["good_transfers"] = (new["Agreement"] == True).cumsum()
+        new["bad_transfers"] = (new["Agreement"] == False).cumsum()
+
+        new["error_rate"] = new.apply(
+            lambda row: (
+                row["bad_transfers"] / (row["good_transfers"] + row["bad_transfers"])
+            ),
+            axis=1,
         )
+        new.to_csv("new_df_post.csv")
 
-        peak_join["Agreement"] = peak_join.apply(self._check_overlap_time, axis=1)
-        peak_join.sort_values(by="Agreement", ascending=False, inplace=True)
-        peak_join.to_csv("peak_join_pre_drop.csv")
-
-        # compare the old and new results (here, 1 means the match, 0 means they dont)
-        peak_join.drop_duplicates(
-            subset=["File Name", "Full Sequence"], keep="first", inplace=True
-        )
-
-        censored_peaks.drop_duplicates(
-            subset=["File Name", "Full Sequence"], keep="first", inplace=True
-        )
-
-        if peak_join.shape[0] == 0:
-            return {"sensitivity": 0, "error_rate": 0}
-
-        peak_join.sort_values(by="PIP Q-Value", ascending=True, inplace=True)
-        peak_join["good_transfers"] = (peak_join["Agreement"] == 1).cumsum()
-        peak_join["bad_transfers"] = (peak_join["Agreement"] == 0).cumsum()
-        peak_join["error_rate"] = peak_join.apply(self._calculate_error_rate, axis=1)
-        peak_join.to_csv("peak_join_post_drop.csv")
-
-        return {
-            "sensitivity": peak_join.shape[0] / censored_peaks.shape[0],
-            "error_rate": peak_join["error_rate"].iloc[-1],
-        }
-
-    def _check_overlap_time(self, row):
-        pip_apex = float(row["Peak RT Apex_y"])
-        ms_apex = float(row["Peak RT Apex_x"])
-
-        if abs(pip_apex - ms_apex) < self.data.rt_delta:
-            return 1
+        if new.shape[0] == 0 or manifest.shape[0] == 0:
+            return {"sensitivity": 0.0, "error_rate": 0.0}
         else:
-            return 0
+            return {
+                "sensitivity": new.shape[0] / manifest.shape[0],
+                "error_rate": new["error_rate"].iloc[-1],
+            }
 
-    def _calculate_error_rate(self, row):
-        return row["bad_transfers"] / (row["good_transfers"] + row["bad_transfers"])
+
+################################################################################
+class ProteomicsLFQ(Analysis):
+    class Peptide:
+        def __init__(
+            self,
+            file_ref: str,
+            detection_type: str,
+            mbr_qval: float,
+            pep: oms.PeptideIdentification,
+            feat: oms.FeatureHandle | None = None,
+        ):
+            self.file_ref = file_ref
+            self.detection_type = detection_type
+            self.mbr_qvalue = mbr_qval
+
+            hit = pep.getHits()[0]
+            aaseq = hit.getSequence()
+
+            self.sequence = aaseq.toUnmodifiedString()
+            self.sequence_with_mods = str(aaseq)
+            self.score = hit.getScore()
+            self.is_decoy = hit.isDecoy()
+            self.organism = str(hit.extractProteinAccessionsSet())
+
+            if feat is not None:
+                self.rt = feat.getRT()
+            else:
+                self.rt = pep.getRT()
+
+        def to_row(self):
+            return {
+                "File": self.file_ref,
+                "Full Sequence": self.sequence_with_mods,
+                "Base Sequence": self.sequence,
+                "Peak Detection Type": self.detection_type,
+                "Decoy Peptide": self.is_decoy,
+                "Organism": self.organism,
+                "Score": self.score,
+                "PIP Q-Value": self.mbr_qvalue,
+                "PIP PEP": 1 - self.mbr_qvalue,
+                "RT": self.rt / 60.0,  # FlashLFQ uses minutes
+                "Random RT": False,
+            }
+
+    class IdFile:
+        def __init__(self, file):
+            self.maps = {}
+            self.peptides = []
+            self.empty_features = 0
+            self.mbr_events = 0
+
+            self.log = logging.getLogger(__name__)
+            self._load(file)
+
+        def to_df(self):
+            return pd.DataFrame(self.peptides | select(lambda p: p.to_row()))
+
+        def _load(self, file):
+            self.log.info(f"loading identifications from {file}")
+
+            consensus_map = oms.ConsensusMap()
+            oms.ConsensusXMLFile().load(str(file), consensus_map)
+
+            for id, header in consensus_map.getColumnHeaders().items():
+                base = str(Path(header.filename).stem)
+                self.maps[id] = base.replace("-censored", "")
+
+            for consensus_feature in consensus_map:
+                if "mbr_transfer_map_indices" in consensus_feature.getKeys():
+                    peps = list(
+                        consensus_feature.getPeptideIdentifications()
+                        | where(lambda pep: len(pep.getHits()) > 0)
+                    )
+
+                    if len(peps) == 0:
+                        self.empty_features += 1
+                        continue
+
+                    assert len(peps) == 1
+
+                    self.peptides.extend(
+                        self._peptides_from_feature(consensus_feature, peps[0])
+                    )
+
+            self.log.info(
+                f"loaded {len(self.peptides)} peptides with {self.mbr_events} MBR events"
+            )
+
+        def _peptides_from_feature(self, feature, pep):
+            results = []
+            seen_maps = set()
+
+            mbr_maps = feature.getMetaValue("mbr_transfer_map_indices")
+            mbr_qvals = feature.getMetaValue("mbr_transfer_qvalues")
+            self.mbr_events += len(mbr_maps)
+
+            if mbr_qvals is None or mbr_qvals == []:
+                mbr_qvals = [1.0] * len(mbr_maps)
+
+            for handle in feature.getFeatureList():
+                idx = handle.getMapIndex()
+
+                if idx in mbr_maps:
+                    continue
+
+                assert idx not in seen_maps
+                assert idx in self.maps
+                seen_maps.add(idx)
+
+                file_ref = self.maps[idx]
+                results.append(
+                    ProteomicsLFQ.Peptide(file_ref, "MSMS", 0.0, pep, handle)
+                )
+
+            for place in range(len(mbr_maps)):
+                map_idx = mbr_maps[place]
+                qval = mbr_qvals[place]
+
+                assert map_idx not in seen_maps
+                assert map_idx in self.maps
+
+                file_ref = self.maps[map_idx]
+                results.append(ProteomicsLFQ.Peptide(file_ref, "MBR", qval, pep))
+
+            return results
+
+    def __init__(self, data: DataHelper):
+        Analysis.__init__(self, data)
+        self.on = ["File", "Base Sequence"]
+
+        # Match the names exported by OpenMS:
+        if self.data.foreign_species == "Saccharomyces cerevisiae":
+            self.data.foreign_species = "YEAST"
+        else:
+            raise RuntimeError(f"Does OpenMS know what {self.data.foreign_species} is?")
+
+    def run(self):
+        self.log.info("analyzing ProteomicsLFQ data")
+        self._load()
+        return Analysis.run(self, self.original_df, self.censored_df, self.manifest_df)
+
+    def _load(self):
+        file_name = "proteomicslfq.consensusXML"
+        self.original = ProteomicsLFQ.IdFile(self.data.orig_path / file_name)
+        self.censored = ProteomicsLFQ.IdFile(self.data.censored_path / file_name)
+
+        self.original_df = self.original.to_df()
+        self.censored_df = self.censored.to_df()
+        self.manifest_df = pd.read_csv(self.data.censored_manifest, sep="\t")
+
+        self.original_df.to_csv("original_df.csv")
+        self.censored_df.to_csv("censored_df.csv")
+        self.manifest_df.to_csv("manifest_df.csv")
+
+
+################################################################################
+class FlashLFQ(Analysis):
+    def __init__(self, data: DataHelper):
+        Analysis.__init__(self, data)
+
+    def run(self):
+        self.log.info("analyzing output from FlashLFQ")
+
+        orig = self._load_peaks(self.data.orig_path)
+        censored = self._load_peaks(self.data.censored_path)
+        manifest = self._load_censored_psms()
+
+        return Analysis.run(self, orig, censored, manifest)
 
     def _load_peaks(self, directory):
         file_name = directory / "QuantifiedPeaks.tsv"
@@ -283,10 +416,21 @@ class FlashLFQ:
         pattern = re.compile(r"(-censored)?-(calib)$")
         peaks["File Name"] = peaks["File Name"].str.replace(pattern, "", regex=True)
 
-        return peaks
+        return self._fixup_df(peaks)
 
     def _load_censored_psms(self):
-        return pd.read_csv(self.data.censored_manifest, sep="\t")
+        manifest = pd.read_csv(self.data.censored_manifest, sep="\t")
+        return self._fixup_df(manifest)
+
+    def _fixup_df(self, df):
+        """
+        Make the data look like what the `Analysis` class expects.
+        """
+        if "Peak RT Apex" in df.columns:
+            df = df[df["Peak RT Apex"] != "-"]
+            df["RT"] = df.apply(lambda r: float(r["Peak RT Apex"]), axis=1)
+
+        return df
 
 
 ################################################################################
@@ -308,11 +452,11 @@ if __name__ == "__main__":
     parser.add_argument("--output", default="analysis.json", type=Path)
     parser.add_argument("--log", type=Path)
 
-    parser.add_argument("--tool", required=True, choices=["flashlfq"])
+    parser.add_argument("--tool", required=True, choices=["flashlfq", "proteomicslfq"])
     parser.add_argument("--qval", default=0.01, type=float)
     parser.add_argument("--human-file-pattern", default="_1x02nguL_")
     parser.add_argument("--foreign-species", default="Saccharomyces cerevisiae")
-    parser.add_argument("--rt-delta", default=(40 * 0.01), type=float)
+    parser.add_argument("--rt-delta", default=(24.0 / 60.0), type=float)
 
     parser.add_argument("file", action="extend", nargs="+", type=Path)
 
@@ -324,6 +468,7 @@ if __name__ == "__main__":
     logging.basicConfig(**logopts)
 
     data = DataHelper(args.data, args.id, args.censored_manifest, *args.file)
+    data.tool = args.tool
     data.q_value = args.qval
     data.human_file_pattern = args.human_file_pattern
     data.foreign_species = args.foreign_species
@@ -334,6 +479,9 @@ if __name__ == "__main__":
     if args.tool == "flashlfq":
         flashlfq = FlashLFQ(data)
         results = flashlfq.run()
+    elif args.tool == "proteomicslfq":
+        proteomicslfq = ProteomicsLFQ(data)
+        results = proteomicslfq.run()
 
     if results is not None:
         with open(args.output, "w") as file:

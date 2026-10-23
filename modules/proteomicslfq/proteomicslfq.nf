@@ -13,10 +13,12 @@ process proteomicslfq {
         mztab: file("proteomicslfq.mzTab"),
         consensus: file("proteomicslfq.consensusXML"),
         msstats: file("msstats.csv"),
+        log: file("proteomicslfq.log"),
     )
 
     script:
     def pip_echo_enabled = mbr_fdr < 1.0 ? "true" : "false"
+
     """
     ProteomicsLFQ \
       -in ${mzml_files.join(' ')} \
@@ -40,6 +42,7 @@ process proteomicslfq {
       -out proteomicslfq.mzTab \
       -out_cxml proteomicslfq.consensusXML \
       -out_msstats msstats.csv \
-      -debug 0
+      -debug 0 |
+      tee "proteomicslfq.log"
     """
 }
