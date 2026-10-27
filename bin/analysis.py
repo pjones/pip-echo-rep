@@ -69,7 +69,8 @@ class Analysis:
     def __init__(self, data: DataHelper):
         self.data = data
         self.log = logging.getLogger(__name__)
-        self.on = ["File Name", "Full Sequence"]
+        self.file_name_col = "File Name"
+        self.sequence_col = "Full Sequence"
 
     def run(self, original, censored, manifest):
         mbr_original = len(original[original["Peak Detection Type"] == "MBR"].index)
@@ -83,11 +84,12 @@ class Analysis:
         return json
 
     def fdp(self, original, censored, manifest):
+        key = [self.file_name_col, self.sequence_col]
         entrapment_seqs = self.data.entrapment_seqs()
 
         # Limit to human files.
         original = original.loc[
-            original[self.on[0]].str.contains(self.data.human_file_pattern)
+            original[key[0]].str.contains(self.data.human_file_pattern)
         ]
 
         msms_detected_foreign_peaks = original.loc[
@@ -95,9 +97,9 @@ class Analysis:
             & (original["Organism"].str.contains(self.data.foreign_species, na=False))
         ]
         msms_detected_foreign_peaks = msms_detected_foreign_peaks.drop_duplicates(
-            subset=[self.on[1]], keep="first"
+            subset=[key[1]], keep="first"
         )
-        msms_foreign_seqs = msms_detected_foreign_peaks[self.on[1]].tolist()
+        msms_foreign_seqs = msms_detected_foreign_peaks[key[1]].tolist()
 
         msms_peaks = original.loc[
             (original["Peak Detection Type"] == "MSMS")
@@ -146,7 +148,7 @@ class Analysis:
         ]
         foreign_count = foreign_peaks.shape[0]
 
-        msms_foreign_count = sum(foreign_peaks[self.on[1]].isin(msms_foreign_seqs))
+        msms_foreign_count = sum(foreign_peaks[key[1]].isin(msms_foreign_seqs))
         foreign_count = foreign_count - msms_foreign_count
         nper_results = self.native_error(original, censored, manifest)
 
@@ -194,8 +196,15 @@ class Analysis:
         }
 
     def native_error(self, original, censored, manifest):
-        removed = pd.merge(original, manifest, on=self.on)
-        removed = removed[[self.on[0], self.on[1], "RT"]]
+        key = [self.file_name_col, self.sequence_col]
+
+        # Only MSMS detected peptides should have been removed by the
+        # censor script, but just in case:
+        msms = original[original["Peak Detection Type"] == "MSMS"]
+
+        # These are the MSMS peptides removed from the mzML files:
+        removed = pd.merge(msms, manifest, on=key)
+        removed = removed[[self.file_name_col, self.sequence_col, "RT"]]
         removed.to_csv("removed_df.csv")
 
         censored_mbr = censored.loc[
@@ -204,39 +213,42 @@ class Analysis:
             & (censored["PIP Q-Value"] <= self.data.q_value)
         ]
 
-        new = pd.merge(censored_mbr, removed, on=self.on)
-        new["RT_d"] = new.apply(lambda row: abs(row["RT_x"] - row["RT_y"]), axis=1)
-        new["Agreement"] = new.apply(lambda r: r["RT_d"] <= self.data.rt_delta, axis=1)
-        new.sort_values(by="Agreement", ascending=False, inplace=True)
-        new.to_csv("new_df_pre.csv")
+        # These are the peptides that were removed from the original
+        # run but then found via MBR:
+        mbr = pd.merge(censored_mbr, removed, on=key)
+        mbr["RT_d"] = mbr.apply(lambda row: abs(row["RT_x"] - row["RT_y"]), axis=1)
+        mbr["Agreement"] = mbr.apply(lambda r: r["RT_d"] <= self.data.rt_delta, axis=1)
+        mbr.sort_values(by="Agreement", ascending=False, inplace=True)
+        mbr.to_csv("mbr_df_pre.csv")
 
-        # FIXME: why isn't there more overlap?
-        self.log.info(f"original peptides: {original.shape}")
+        # FIXME: why isn't there more overlap between manifest and
+        # removed?  This might indicate a bug in the censor script.
+        self.log.info(f"    MSMS peptides: {msms.shape}")
         self.log.info(f"manifest peptides: {manifest.shape}")
         self.log.info(f" removed peptides: {removed.shape}")
-        self.log.info(f"     new peptides: {new.shape}")
+        self.log.info(f"     MBR peptides: {mbr.shape}")
 
-        new = new.drop_duplicates(subset=self.on, keep="first")
-        manifest = manifest.drop_duplicates(subset=self.on, keep="first")
+        mbr = mbr.drop_duplicates(subset=key, keep="first")
+        manifest = manifest.drop_duplicates(subset=key, keep="first")
 
-        new.sort_values(by="PIP Q-Value", ascending=True, inplace=True)
-        new["good_transfers"] = (new["Agreement"] == True).cumsum()
-        new["bad_transfers"] = (new["Agreement"] == False).cumsum()
+        mbr.sort_values(by="PIP Q-Value", ascending=True, inplace=True)
+        mbr["good_transfers"] = (mbr["Agreement"] == True).cumsum()
+        mbr["bad_transfers"] = (mbr["Agreement"] == False).cumsum()
 
-        new["error_rate"] = new.apply(
+        mbr["error_rate"] = mbr.apply(
             lambda row: (
                 row["bad_transfers"] / (row["good_transfers"] + row["bad_transfers"])
             ),
             axis=1,
         )
-        new.to_csv("new_df_post.csv")
+        mbr.to_csv("mbr_df_post.csv")
 
-        if new.shape[0] == 0 or manifest.shape[0] == 0:
+        if mbr.shape[0] == 0 or manifest.shape[0] == 0:
             return {"sensitivity": 0.0, "error_rate": 0.0}
         else:
             return {
-                "sensitivity": new.shape[0] / manifest.shape[0],
-                "error_rate": new["error_rate"].iloc[-1],
+                "sensitivity": mbr.shape[0] / manifest.shape[0],
+                "error_rate": mbr["error_rate"].iloc[-1],
             }
 
 
@@ -264,10 +276,13 @@ class ProteomicsLFQ(Analysis):
             self.is_decoy = hit.isDecoy()
             self.organism = str(hit.extractProteinAccessionsSet())
 
+            # Note: Retention time in OpenMS is measured in seconds.
+            # However, other tools use minutes so the remainder of
+            # this script does too.
             if feat is not None:
-                self.rt = feat.getRT()
+                self.rt = feat.getRT() / 60.0
             else:
-                self.rt = pep.getRT()
+                self.rt = pep.getRT() / 60.0
 
         def to_row(self):
             return {
@@ -280,7 +295,7 @@ class ProteomicsLFQ(Analysis):
                 "Score": self.score,
                 "PIP Q-Value": self.mbr_qvalue,
                 "PIP PEP": 1 - self.mbr_qvalue,
-                "RT": self.rt / 60.0,  # FlashLFQ uses minutes
+                "RT": self.rt,
                 "Random RT": False,
             }
 
@@ -308,21 +323,20 @@ class ProteomicsLFQ(Analysis):
                 self.maps[id] = base.replace("-censored", "")
 
             for consensus_feature in consensus_map:
-                if "mbr_transfer_map_indices" in consensus_feature.getKeys():
-                    peps = list(
-                        consensus_feature.getPeptideIdentifications()
-                        | where(lambda pep: len(pep.getHits()) > 0)
-                    )
+                peps = list(
+                    consensus_feature.getPeptideIdentifications()
+                    | where(lambda pep: len(pep.getHits()) > 0)
+                )
 
-                    if len(peps) == 0:
-                        self.empty_features += 1
-                        continue
+                if len(peps) == 0:
+                    self.empty_features += 1
+                    continue
 
-                    assert len(peps) == 1
+                assert len(peps) == 1
 
-                    self.peptides.extend(
-                        self._peptides_from_feature(consensus_feature, peps[0])
-                    )
+                self.peptides.extend(
+                    self._peptides_from_feature(consensus_feature, peps[0])
+                )
 
             self.log.info(
                 f"loaded {len(self.peptides)} peptides with {self.mbr_events} MBR events"
@@ -330,45 +344,48 @@ class ProteomicsLFQ(Analysis):
 
         def _peptides_from_feature(self, feature, pep):
             results = []
+
             seen_maps = set()
+            mbr_maps = []
+            mbr_qvals = []
 
-            mbr_maps = feature.getMetaValue("mbr_transfer_map_indices")
-            mbr_qvals = feature.getMetaValue("mbr_transfer_qvalues")
-            self.mbr_events += len(mbr_maps)
+            if "mbr_transfer_map_indices" in feature.getKeys():
+                mbr_maps = feature.getMetaValue("mbr_transfer_map_indices")
+                mbr_qvals = feature.getMetaValue("mbr_transfer_qvalues")
+                self.mbr_events += len(mbr_maps)
 
-            if mbr_qvals is None or mbr_qvals == []:
-                mbr_qvals = [1.0] * len(mbr_maps)
+                if mbr_qvals is None or mbr_qvals == []:
+                    mbr_qvals = [1.0] * len(mbr_maps)
 
             for handle in feature.getFeatureList():
+                detection = "MSMS"
+                qval = 0.0
+
                 idx = handle.getMapIndex()
-
-                if idx in mbr_maps:
-                    continue
-
-                assert idx not in seen_maps
-                assert idx in self.maps
                 seen_maps.add(idx)
 
+                assert idx in self.maps
                 file_ref = self.maps[idx]
+
+                if idx in mbr_maps:
+                    place = mbr_maps.index(idx)
+                    qval = mbr_qvals[place]
+                    detection = "MBR"
+
                 results.append(
-                    ProteomicsLFQ.Peptide(file_ref, "MSMS", 0.0, pep, handle)
+                    ProteomicsLFQ.Peptide(file_ref, detection, qval, pep, handle)
                 )
 
-            for place in range(len(mbr_maps)):
-                map_idx = mbr_maps[place]
-                qval = mbr_qvals[place]
-
-                assert map_idx not in seen_maps
-                assert map_idx in self.maps
-
-                file_ref = self.maps[map_idx]
-                results.append(ProteomicsLFQ.Peptide(file_ref, "MBR", qval, pep))
+            # Ensure that we saw all of the maps recorded as accepting
+            # an MBR transfer.
+            for idx in mbr_maps:
+                assert idx in seen_maps
 
             return results
 
     def __init__(self, data: DataHelper):
         Analysis.__init__(self, data)
-        self.on = ["File", "Base Sequence"]
+        self.file_name_col = "File"
 
         # Match the names exported by OpenMS:
         if self.data.foreign_species == "Saccharomyces cerevisiae":
