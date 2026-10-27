@@ -4,18 +4,22 @@ process censor {
     input:
     mzml_files: List<Path>
     record(
-        t1_psms: Path,
-        t1_peps: Path,
+        t3_psms: Path,
+        t3_peps: Path,
     )
 
     output:
     record(
         mzml: files("*-censored.mzML"),
-        psms: file("censored.psmtsv")
+        psms: file("censored.tsv"),
+        log: file("censor.log"),
     )
 
     script:
     """
-    censor.py --tool flashlfq ${t1_peps} ${t1_psms} ${mzml_files.join(' ')}
+    censor.py \
+        --log censor.log \
+        --tool flashlfq \
+        ${t3_psms} ${mzml_files.join(' ')}
     """
 }

@@ -8,10 +8,14 @@ process censor {
     record(
         mzml: files("*-censored.mzML"),
         censored: file("censored.tsv"),
+        log: file("censor.log"),
     )
 
     script:
     """
-    censor.py --tool proteomicslfq .
+    censor.py \
+        --log censor.log \
+        --tool proteomicslfq \
+        .
     """
 }
