@@ -290,6 +290,26 @@
 
     The =ProteomicsLFQ= tool was used in the same way as =FlashLFQ= above.
 
+*** ProteomicsLFQ without PIP-ECHO
+
+    When =PIP-ECHO= is disabled in ProteomicsLFQ it appeared like it was
+    unable to correctly transfer peptide identifications from a MSMS
+    identified run to a censored run (via MBR).  This was due to
+    OpenMS discarding the original scan retention times after
+    performing feature alignment and the analysis I'm performing
+    requires the original retention times.
+
+    That is because the PIP-ECHO paper states that the delta between
+    the MSMS retention time and the MBR retention time must not exceed
+    "1% the length of the LC gradient".  In the case of the
+    single-cell data this amounts to 24 seconds.
+
+    To work around this issue I needed to run =ProteomicsLFQ= with a
+    debugging option that instructed it to output the transformation
+    matrix it used to align the maps in the experiment.  Then in the
+    analysis script I used the alignment information to recover the
+    original retention times.
+
 *** Workflow
 
     Nextflow was used to perform the following workflow:
