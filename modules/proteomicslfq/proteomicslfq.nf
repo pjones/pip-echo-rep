@@ -13,6 +13,7 @@ process proteomicslfq {
         mztab: file("proteomicslfq.mzTab"),
         consensus: file("proteomicslfq.consensusXML"),
         msstats: file("msstats.csv"),
+        trafoXML: files("*.trafoXML"),
         log: file("proteomicslfq.log"),
     )
 
@@ -42,7 +43,7 @@ process proteomicslfq {
       -out proteomicslfq.mzTab \
       -out_cxml proteomicslfq.consensusXML \
       -out_msstats msstats.csv \
-      -debug 0 |
+      -debug 1000 |
       tee "proteomicslfq.log"
     """
 }

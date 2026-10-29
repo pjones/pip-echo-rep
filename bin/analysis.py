@@ -260,6 +260,7 @@ class ProteomicsLFQ(Analysis):
             file_ref: str,
             detection_type: str,
             mbr_qval: float,
+            trafo: oms.TransformationDescription,
             pep: oms.PeptideIdentification,
             feat: oms.FeatureHandle | None = None,
         ):
@@ -280,9 +281,16 @@ class ProteomicsLFQ(Analysis):
             # However, other tools use minutes so the remainder of
             # this script does too.
             if feat is not None:
-                self.rt = feat.getRT() / 60.0
+                self.rt = feat.getRT()
+                self.mz = feat.getMZ()
+                self.intensity = feat.getIntensity()
             else:
-                self.rt = pep.getRT() / 60.0
+                self.rt = pep.getRT()
+                self.mz = pep.getMZ()
+                self.intensity = pep.getIntensity()
+
+            self.aligned_rt = self.rt / 60.0
+            self.rt = trafo.apply(self.rt) / 60.0
 
         def to_row(self):
             return {
@@ -295,24 +303,44 @@ class ProteomicsLFQ(Analysis):
                 "Score": self.score,
                 "PIP Q-Value": self.mbr_qvalue,
                 "PIP PEP": 1 - self.mbr_qvalue,
+                "Aligned RT": self.aligned_rt,
                 "RT": self.rt,
+                "MZ": self.mz,
+                "Intensity": self.intensity,
                 "Random RT": False,
             }
 
     class IdFile:
-        def __init__(self, file):
+        def __init__(self, file: Path):
             self.maps = {}
             self.peptides = []
             self.empty_features = 0
             self.mbr_events = 0
 
             self.log = logging.getLogger(__name__)
-            self._load(file)
+
+            trafo = self._load_trafo_xml(file.parent)
+            self._load_consensus_map(file, trafo)
 
         def to_df(self):
             return pd.DataFrame(self.peptides | select(lambda p: p.to_row()))
 
-        def _load(self, file):
+        def _load_trafo_xml(self, dir: Path):
+            self.log.info(f"loading trafoXML files from {dir}")
+
+            trafo = {}
+
+            for file in dir.glob("*.trafoXML"):
+                td = oms.TransformationDescription()
+                oms.TransformationXMLFile().load(str(file), td, True)
+                td.invert()
+
+                idx = int(file.stem.split("_")[-1])
+                trafo[idx] = td
+
+            return trafo
+
+        def _load_consensus_map(self, file, trafo):
             self.log.info(f"loading identifications from {file}")
 
             consensus_map = oms.ConsensusMap()
@@ -335,14 +363,14 @@ class ProteomicsLFQ(Analysis):
                 assert len(peps) == 1
 
                 self.peptides.extend(
-                    self._peptides_from_feature(consensus_feature, peps[0])
+                    self._peptides_from_feature(trafo, consensus_feature, peps[0])
                 )
 
             self.log.info(
                 f"loaded {len(self.peptides)} peptides with {self.mbr_events} MBR events"
             )
 
-        def _peptides_from_feature(self, feature, pep):
+        def _peptides_from_feature(self, trafo, feature, pep):
             results = []
 
             seen_maps = set()
@@ -364,6 +392,7 @@ class ProteomicsLFQ(Analysis):
                 idx = handle.getMapIndex()
                 seen_maps.add(idx)
 
+                assert idx in trafo
                 assert idx in self.maps
                 file_ref = self.maps[idx]
 
@@ -373,7 +402,9 @@ class ProteomicsLFQ(Analysis):
                     detection = "MBR"
 
                 results.append(
-                    ProteomicsLFQ.Peptide(file_ref, detection, qval, pep, handle)
+                    ProteomicsLFQ.Peptide(
+                        file_ref, detection, qval, trafo[idx], pep, handle
+                    )
                 )
 
             # Ensure that we saw all of the maps recorded as accepting
